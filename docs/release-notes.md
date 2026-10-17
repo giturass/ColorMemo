@@ -1,12 +1,14 @@
-# 彩笺 · ColorMemo 0.1.2
+# 彩笺 · ColorMemo 0.1.3
 
-支持 Android 8.0 及以上版本，可覆盖安装 v0.1.0 升级。
+支持 Android 8.0 及以上版本，可覆盖安装旧版本升级。
 
 - 移除空白页的「写下第一条便笺」按钮，通过右下角「写一条」创建便笺。
 - 移除编辑页的字数和 Markdown 状态文本。
+- 移除编辑页底部的 Markdown 帮助入口。
 - 移除侧边栏底部的文字说明。
+- 调小 WebDAV、S3、R2 服务选择按钮的字号，文字单行显示，三个按钮尺寸一致。
 
-下载 `ColorMemo-v0.1.2.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
+下载 `ColorMemo-v0.1.3.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
 签名证书 SHA-256：
 

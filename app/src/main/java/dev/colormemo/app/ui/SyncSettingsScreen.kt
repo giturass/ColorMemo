@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -55,7 +56,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.colormemo.app.BuildConfig
 import java.net.URI
 
@@ -119,9 +123,23 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                                     draft = draft.copy(provider = provider, region = if (provider == SyncProviderUi.R2) "auto" else if (draft.region == "auto") "us-east-1" else draft.region)
                                     validationError = null
                                 },
-                                label = { Text(when (provider) { SyncProviderUi.WEBDAV -> "WebDAV"; SyncProviderUi.S3 -> "S3"; SyncProviderUi.R2 -> "R2" }) },
-                                leadingIcon = if (draft.provider == provider) ({ Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) }) else null,
-                                modifier = Modifier.weight(1f),
+                                label = {
+                                    Text(
+                                        text = when (provider) {
+                                            SyncProviderUi.WEBDAV -> "WebDAV"
+                                            SyncProviderUi.S3 -> "S3"
+                                            SyncProviderUi.R2 -> "R2"
+                                        },
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                },
+                                modifier = Modifier.weight(1f).height(48.dp),
                             )
                         }
                     }
