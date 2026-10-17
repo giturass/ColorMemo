@@ -1,0 +1,146 @@
+name: Release APK
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing version tag to build and publish (for example v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Signed release APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_CERTIFICATE_SHA256: 4bea1b63b90233d46ed951d66bae2927440c595323234556da7d2038aec25e89
+    steps:
+      - name: Resolve version tag
+        id: version
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          tag="$REQUESTED_TAG"
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            tag="$GITHUB_REF_NAME"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Release tag must have the form vMAJOR.MINOR.PATCH.' >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=${tag#v}" >> "$GITHUB_ENV"
+
+      - name: Check out the tagged source
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ steps.version.outputs.tag }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Restore MDTerm release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MDTERM_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" ]]; then
+            echo 'MDTERM_RELEASE_KEYSTORE_BASE64 is not configured.' >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/colormemo-release.p12"
+
+      - name: Test, lint and build signed APK in GitHub Actions
+        env:
+          MDTERM_RELEASE_STORE_FILE: ${{ runner.temp }}/colormemo-release.p12
+          MDTERM_RELEASE_STORE_PASSWORD: ${{ secrets.MDTERM_RELEASE_STORE_PASSWORD }}
+          MDTERM_RELEASE_KEY_ALIAS: ${{ secrets.MDTERM_RELEASE_KEY_ALIAS }}
+          MDTERM_RELEASE_KEY_PASSWORD: ${{ secrets.MDTERM_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon -PrequireReleaseSigning=true :core:test :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+
+      - name: Verify package, version and MDTerm certificate
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -f "$apk"
+          test "$(apkanalyzer manifest application-id "$apk")" = dev.colormemo.app
+          test "$(apkanalyzer manifest version-name "$apk")" = "$RELEASE_VERSION"
+          test "$(apkanalyzer manifest min-sdk "$apk")" = 26
+          test "$(apkanalyzer manifest target-sdk "$apk")" = 35
+          test "$(apkanalyzer manifest debuggable "$apk")" = false
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/colormemo-apksigner.txt"
+          grep -Fx 'Number of signers: 1' "$RUNNER_TEMP/colormemo-apksigner.txt"
+          actual_certificate="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/colormemo-apksigner.txt")"
+          test "$actual_certificate" = "$RELEASE_CERTIFICATE_SHA256"
+          mkdir -p dist
+          apk_name="ColorMemo-$RELEASE_TAG.apk"
+          cp "$apk" "dist/$apk_name"
+          (cd dist && sha256sum "$apk_name" > "$apk_name.sha256")
+          printf '%s\n' "$actual_certificate" > dist/signing-certificate-sha256.txt
+          echo "APK_NAME=$apk_name" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Upload verified release files
+        uses: actions/upload-artifact@v7
+        with:
+          name: ColorMemo-${{ steps.version.outputs.tag }}
+          if-no-files-found: error
+          path: dist/
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$RUNNER_TEMP/colormemo-release-notes.md"
+          cp docs/release-notes.md "$notes"
+          printf '\n\nBuilt by [GitHub Actions](%s/%s/actions/runs/%s).\nSource commit: `%s`.\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$SOURCE_SHA" >> "$notes"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/$APK_NAME" "dist/$APK_NAME.sha256" \
+              dist/signing-certificate-sha256.txt --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "彩笺 $RELEASE_TAG" --latest --notes-file "$notes"
+          else
+            gh release create "$RELEASE_TAG" "dist/$APK_NAME" "dist/$APK_NAME.sha256" \
+              dist/signing-certificate-sha256.txt --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "彩笺 $RELEASE_TAG" --latest --notes-file "$notes"
+          fi
+
+      - name: Upload test, lint and R8 reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-reports-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          path: |
+            core/build/reports/tests/
+            app/build/reports/tests/
+            app/build/reports/lint-results-release.*
+            app/build/outputs/mapping/release/
+
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/colormemo-release.p12"

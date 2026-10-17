@@ -1,0 +1,12 @@
+ColorMemo (彩笺)
+Copyright 2026 ColorMemo contributors
+
+Licensed under the Apache License, Version 2.0.
+
+ColorMemo is an independent open source project. Google Keep, Amazon S3, and
+Cloudflare R2 are trademarks of their respective owners. This project is not
+affiliated with or endorsed by those companies.
+
+Gradle Wrapper is distributed under the Apache License, Version 2.0.
+AndroidX, Kotlin, kotlinx.coroutines, kotlinx.serialization, OkHttp, and Markwon
+are third-party libraries with their own license and notice requirements.
