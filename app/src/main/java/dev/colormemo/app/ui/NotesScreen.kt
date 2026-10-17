@@ -125,13 +125,6 @@ internal fun MemoDrawer(
             icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
             modifier = Modifier.padding(horizontal = 12.dp),
         )
-        Spacer(Modifier.weight(1f))
-        Text(
-            "你的记录，由你保管。\n离线可用 · 开源 · 自选云存储",
-            modifier = Modifier.padding(28.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
