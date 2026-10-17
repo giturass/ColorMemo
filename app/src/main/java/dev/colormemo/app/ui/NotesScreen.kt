@@ -181,13 +181,10 @@ internal fun NotesScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
+            if (section != MemoSection.NOTES) {
+                Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 10.dp, bottom = 4.dp)) {
                     Text(
-                        if (section == MemoSection.NOTES) "灵感，随手记。" else section.label,
+                        section.label,
                         style = MaterialTheme.typography.headlineMedium,
                     )
                     val sectionDescription = when (section) {
@@ -205,37 +202,17 @@ internal fun NotesScreen(
                         )
                     }
                 }
-                IconButton(onClick = { compactGrid = !compactGrid }) {
-                    Icon(
-                        if (compactGrid) Icons.Outlined.ViewAgenda else Icons.Outlined.GridView,
-                        if (compactGrid) "切换为列表" else "切换为卡片网格",
-                    )
-                }
             }
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-                placeholder = { Text("搜索${section.label}…") },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Clear, "清除搜索") }
-                },
-                shape = RoundedCornerShape(20.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                ),
-            )
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     FilterChip(selected = !pinnedOnly && colorFilter == null, onClick = { pinnedOnly = false; colorFilter = null }, label = { Text("全部") })
                     FilterChip(
                         selected = pinnedOnly,
@@ -263,8 +240,31 @@ internal fun NotesScreen(
                         }
                     }
                 }
-                Text("${visible.size} 条", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = { compactGrid = !compactGrid }) {
+                    Icon(
+                        if (compactGrid) Icons.Outlined.ViewAgenda else Icons.Outlined.GridView,
+                        if (compactGrid) "切换为列表" else "切换为卡片网格",
+                    )
+                }
             }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+                placeholder = { Text("搜索${section.label}…") },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Clear, "清除搜索") }
+                },
+                shape = CircleShape,
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                ),
+            )
             if (state.syncSettings.enabled) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, bottom = 4.dp),
