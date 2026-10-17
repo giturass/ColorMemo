@@ -149,21 +149,15 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                         SettingsField(draft.bucket, { draft = draft.copy(bucket = it) }, "存储桶名称", placeholder = "my-notes")
                         if (draft.provider == SyncProviderUi.S3) {
                             SettingsField(draft.region, { draft = draft.copy(region = it) }, "区域", placeholder = "us-east-1")
-                        } else {
-                            Text("R2 使用账户端点，区域自动设为 auto。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         SettingsField(draft.accessKeyId, { draft = draft.copy(accessKeyId = it) }, "Access Key ID", keyboardType = KeyboardType.Ascii)
                         SecretField(draft.secretAccessKey, { draft = draft.copy(secretAccessKey = it) }, "Secret Access Key")
                         TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "收起临时凭据" else "使用临时凭据（可选）") }
                         if (advanced) SecretField(draft.sessionToken, { draft = draft.copy(sessionToken = it) }, "Session Token（可选）")
-                        Text("支持 S3 兼容服务，使用路径式地址访问存储桶。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (draft.provider != SyncProviderUi.WEBDAV) {
                         SettingsField(draft.pathPrefix, { draft = draft.copy(pathPrefix = it) }, "对象前缀（可留空）", placeholder = "colormemo")
-                    } else {
-                        Text("服务器地址填写已存在的 WebDAV 目录；应用在该目录读写 colormemo-v1.json。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("所有设备使用相同的目录。连接必须使用 HTTPS；服务器保存普通 JSON 文件，尚未提供端到端加密。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     HorizontalDivider()
                     SettingsToggle("自动同步", "修改后同步，并定期检查其他设备的更新", draft.automaticSync, { draft = draft.copy(automaticSync = it) })
                     if (draft.automaticSync) {
