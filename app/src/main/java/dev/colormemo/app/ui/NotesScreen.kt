@@ -45,7 +45,6 @@ import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -312,7 +311,6 @@ internal fun NotesScreen(
                 visible.isEmpty() -> EmptyNotes(
                     section = section,
                     hasFilter = query.isNotBlank() || pinnedOnly || colorFilter != null,
-                    onCreate = { onOpenNote(null) },
                     onClearFilter = { query = ""; pinnedOnly = false; colorFilter = null },
                 )
                 else -> LazyVerticalStaggeredGrid(
@@ -455,7 +453,7 @@ private fun MemoCard(
 }
 
 @Composable
-private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onCreate: () -> Unit, onClearFilter: () -> Unit) {
+private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onClearFilter: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -488,9 +486,6 @@ private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onCreate: () ->
             textAlign = TextAlign.Center,
         )
         if (hasFilter) TextButton(onClick = onClearFilter) { Text("清除筛选") }
-        else if (section == MemoSection.NOTES || section == MemoSection.REMINDERS) {
-            Button(onClick = onCreate) { Icon(Icons.Outlined.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("写下第一条便笺") }
-        }
         Spacer(Modifier.height(64.dp))
     }
 }

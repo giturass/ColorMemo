@@ -279,12 +279,6 @@ internal fun NoteEditorScreen(
                     },
                 )
             }
-            Text(
-                if (note == null) "${content.text.length} 字 · Markdown" else "${content.text.length} 字 · 上次修改 ${formatModified(note.updatedAt)}",
-                modifier = Modifier.padding(top = 32.dp, bottom = 24.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             if (content.text.length >= MAX_CONTENT_LENGTH || title.length >= MAX_TITLE_LENGTH) {
                 Text("标题最多 500 字，正文最多 100,000 字。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }

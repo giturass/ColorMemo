@@ -1,15 +1,11 @@
-# 彩笺 · ColorMemo 0.1.0
+# 彩笺 · ColorMemo 0.1.1
 
-首个开源版本，支持 Android 8.0 及以上版本。
+支持 Android 8.0 及以上版本，可覆盖安装 v0.1.0 升级。
 
-- 11 种颜色卡片、瀑布流/列表、置顶、搜索和颜色筛选。
-- Markdown 编辑与预览、归档、回收站和恢复。
-- 本地通知提醒、重启恢复，可选精确闹钟权限。
-- WebDAV、Amazon S3、Cloudflare R2 同步；手动/自动同步、冲突副本和删除传播。
-- Android Keystore 加密同步凭据；JSON 备份导入和 Markdown ZIP 导出。
-- 浅色/深色主题，简体中文界面，Apache-2.0 许可证。
+- 移除空白页的「写下第一条便笺」按钮，通过右下角「写一条」创建便笺。
+- 移除编辑页的字数和 Markdown 状态文本。
 
-下载 `ColorMemo-v0.1.0.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
+下载 `ColorMemo-v0.1.1.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
 签名证书 SHA-256：
 
