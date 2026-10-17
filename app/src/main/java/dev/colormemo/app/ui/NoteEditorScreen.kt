@@ -188,6 +188,7 @@ internal fun NoteEditorScreen(
                         if (!preview) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                                 MarkdownAction(Icons.Outlined.FormatBold, "加粗", saving) { content = content.insert("**", "**", "文字"); focusRequester.requestFocus() }
+                                TextButton(onClick = { content = content.insert("# ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving) { Text("H₁", style = MaterialTheme.typography.titleMedium) }
                                 TextButton(onClick = { content = content.insert("## ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving) { Text("H₂", style = MaterialTheme.typography.titleMedium) }
                                 MarkdownAction(Icons.AutoMirrored.Outlined.FormatListBulleted, "插入列表", saving) { content = content.insert("- ", "", "列表项", block = true); focusRequester.requestFocus() }
                                 MarkdownAction(Icons.Outlined.CheckBox, "插入待办清单", saving) { content = content.insert("- [ ] ", "", "待办事项", block = true); focusRequester.requestFocus() }

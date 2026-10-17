@@ -7,6 +7,7 @@
 - 移除编辑页底部的 Markdown 帮助入口。
 - 移除侧边栏底部的文字说明。
 - 调小 WebDAV、S3、R2 服务选择按钮的字号，文字单行显示，三个按钮尺寸一致。
+- Markdown 工具栏新增 H1 一级标题快捷按钮。
 
 下载 `ColorMemo-v0.1.3.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
