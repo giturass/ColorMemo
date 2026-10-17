@@ -183,7 +183,7 @@ internal fun NotesScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.Bottom,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(

@@ -19,7 +19,7 @@
 
 ## 获取 APK 与开发
 
-从 [GitHub Releases](https://github.com/giturass/ColorMemo/releases/latest) 下载 `ColorMemo-v0.1.4.apk`，支持 Android 8.0 及以上。源码仓库：[giturass/ColorMemo](https://github.com/giturass/ColorMemo)。
+从 [GitHub Releases](https://github.com/giturass/ColorMemo/releases/latest) 下载 `ColorMemo-v0.1.5.apk`，支持 Android 8.0 及以上。源码仓库：[giturass/ColorMemo](https://github.com/giturass/ColorMemo)。
 
 正式 APK 由 [GitHub Actions](https://github.com/giturass/ColorMemo/actions/workflows/release.yml) 测试、构建、签名并发布，沿用 MDTerm Release 的签名证书。推送版本标签或手动指定已有标签即可发布；包名为 `dev.colormemo.app`。签名指纹、下载校验及维护步骤见 [发布说明](docs/releasing.md)。
 
