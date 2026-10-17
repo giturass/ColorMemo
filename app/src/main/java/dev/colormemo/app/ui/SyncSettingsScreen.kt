@@ -86,7 +86,6 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
             TopAppBar(
                 title = { Text("同步与设置") },
                 navigationIcon = { IconButton(onClick = close) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") } },
-                actions = { TextButton(onClick = save, enabled = dirty && !state.syncing) { Text("保存") } },
             )
         },
     ) { padding ->
@@ -94,17 +93,6 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(24.dp)) {
-                Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Cloud, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text("你的记录，你的云", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text("离线时照常记录，联网后同步到自己的存储空间。", modifier = Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                }
-            }
-
             SettingsCard {
                 SettingsToggle(
                     title = "启用云同步",

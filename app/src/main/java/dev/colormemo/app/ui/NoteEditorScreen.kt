@@ -59,6 +59,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -105,7 +108,8 @@ internal fun NoteEditorScreen(
     var pinned by rememberSaveable { mutableStateOf(note?.isPinned ?: false) }
     var archived by rememberSaveable { mutableStateOf(note?.isArchived ?: false) }
     var reminderAt by rememberSaveable { mutableStateOf(note?.reminderAt) }
-    var preview by rememberSaveable { mutableStateOf(note?.deletedAt != null) }
+    var preview by rememberSaveable { mutableStateOf(note != null) }
+    var requestEditorFocus by remember { mutableStateOf(false) }
     var showPalette by rememberSaveable { mutableStateOf(false) }
     var showReminder by rememberSaveable { mutableStateOf(false) }
     var showLeaveDialog by remember { mutableStateOf(false) }
@@ -116,6 +120,8 @@ internal fun NoteEditorScreen(
     var saveError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val readOnly = note?.deletedAt != null
     val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null)
     val initialFingerprint = rememberSaveable { draft.fingerprint() }
@@ -213,7 +219,10 @@ internal fun NoteEditorScreen(
                                 }
                             }
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = { preview = !preview }, enabled = !saving) {
+                            TextButton(onClick = {
+                                requestEditorFocus = preview
+                                preview = !preview
+                            }, enabled = !saving) {
                                 Icon(if (preview) Icons.Outlined.Edit else Icons.Outlined.Preview, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(if (preview) "编辑" else "预览")
@@ -282,6 +291,17 @@ internal fun NoteEditorScreen(
             }
             if (content.text.length >= MAX_CONTENT_LENGTH || title.length >= MAX_TITLE_LENGTH) {
                 Text("标题最多 500 字，正文最多 100,000 字。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            // Scaffold subcomposes its content; request focus only after this field's composition.
+            LaunchedEffect(preview) {
+                if (preview) {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                } else if (requestEditorFocus && !readOnly) {
+                    requestEditorFocus = false
+                    focusRequester.requestFocus()
+                    keyboardController?.show()
+                }
             }
         }
     }

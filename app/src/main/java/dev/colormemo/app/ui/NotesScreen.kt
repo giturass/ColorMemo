@@ -133,7 +133,6 @@ internal fun NotesScreen(
     callbacks: MemoCallbacks,
     section: MemoSection,
     onOpenDrawer: () -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenNote: (Note?) -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
@@ -166,9 +165,6 @@ internal fun NotesScreen(
                     }
                 },
                 navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, "打开导航") } },
-                actions = {
-                    IconButton(onClick = onOpenSettings) { Icon(Icons.Outlined.Settings, "同步与设置") }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -194,17 +190,20 @@ internal fun NotesScreen(
                         if (section == MemoSection.NOTES) "灵感，随手记。" else section.label,
                         style = MaterialTheme.typography.headlineMedium,
                     )
-                    Text(
-                        when (section) {
-                            MemoSection.NOTES -> "为日常留一点空间"
-                            MemoSection.REMINDERS -> "把重要的事，交给一个准时的提醒"
-                            MemoSection.ARCHIVE -> "收好记录，给眼前留白"
-                            MemoSection.TRASH -> "移除的便笺会保留，直到你彻底删除"
-                        },
-                        modifier = Modifier.padding(top = 6.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    val sectionDescription = when (section) {
+                        MemoSection.NOTES -> null
+                        MemoSection.REMINDERS -> "把重要的事，交给一个准时的提醒"
+                        MemoSection.ARCHIVE -> "收好记录，给眼前留白"
+                        MemoSection.TRASH -> "移除的便笺会保留，直到你彻底删除"
+                    }
+                    sectionDescription?.let { description ->
+                        Text(
+                            description,
+                            modifier = Modifier.padding(top = 6.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 IconButton(onClick = { compactGrid = !compactGrid }) {
                     Icon(

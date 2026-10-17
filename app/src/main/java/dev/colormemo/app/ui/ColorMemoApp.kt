@@ -107,7 +107,6 @@ fun ColorMemoApp(
                     callbacks = callbacks,
                     section = section,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onOpenSettings = { screen = MemoScreen.SETTINGS },
                     onOpenNote = openNote,
                 )
                 MemoScreen.EDITOR -> key(editorSession) {
