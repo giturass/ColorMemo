@@ -77,20 +77,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlin.math.ceil
-import kotlin.math.max
 import dev.colormemo.app.ui.theme.containerColor
 import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteColor
-
-private const val GridCardMaxAspectRatio = 3f / 4f
-private const val ListCardMaxAspectRatio = 4f / 3f
 
 @Composable
 internal fun MemoDrawer(
@@ -324,17 +318,10 @@ internal fun NotesScreen(
                     verticalItemSpacing = 12.dp,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    val cardMaxAspectRatio = if (compactGrid) GridCardMaxAspectRatio else ListCardMaxAspectRatio
                     if (pinned.isNotEmpty() && section != MemoSection.REMINDERS) {
                         item(key = "pinned-header", span = StaggeredGridItemSpan.FullLine) { NoteGroupLabel("置顶") }
                         items(pinned, key = { "note:${it.id}" }) { note ->
-                            MemoCard(
-                                note,
-                                onOpenNote,
-                                callbacks,
-                                maxAspectRatio = cardMaxAspectRatio,
-                                onDeleteForever = { deleteTarget = it },
-                            )
+                            MemoCard(note, onOpenNote, callbacks, onDeleteForever = { deleteTarget = it })
                         }
                     }
                     if (others.isNotEmpty() || section == MemoSection.REMINDERS) {
@@ -342,13 +329,7 @@ internal fun NotesScreen(
                             item(key = "others-header", span = StaggeredGridItemSpan.FullLine) { NoteGroupLabel("其他便笺") }
                         }
                         items(if (section == MemoSection.REMINDERS) visible else others, key = { "note:${it.id}" }) { note ->
-                            MemoCard(
-                                note,
-                                onOpenNote,
-                                callbacks,
-                                maxAspectRatio = cardMaxAspectRatio,
-                                onDeleteForever = { deleteTarget = it },
-                            )
+                            MemoCard(note, onOpenNote, callbacks, onDeleteForever = { deleteTarget = it })
                         }
                     }
                 }
@@ -411,7 +392,6 @@ private fun MemoCard(
     note: Note,
     onOpen: (Note?) -> Unit,
     callbacks: MemoCallbacks,
-    maxAspectRatio: Float,
     onDeleteForever: (Note) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -421,7 +401,7 @@ private fun MemoCard(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = note.color.containerColor()),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
-        modifier = Modifier.fillMaxWidth().maxAspectRatio(maxAspectRatio),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
             if (note.title.isNotBlank()) {
@@ -493,20 +473,6 @@ private fun MemoCard(
                 }
             }
         }
-    }
-}
-
-private fun Modifier.maxAspectRatio(maxRatio: Float): Modifier = layout { measurable, constraints ->
-    val minimumHeight = if (maxRatio > 0f && constraints.hasFixedWidth) {
-        ceil(constraints.maxWidth / maxRatio).toInt()
-    } else {
-        0
-    }
-    val placeable = measurable.measure(
-        constraints.copy(minHeight = max(constraints.minHeight, minimumHeight)),
-    )
-    layout(placeable.width, placeable.height) {
-        placeable.place(0, 0)
     }
 }
 
