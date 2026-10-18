@@ -105,7 +105,7 @@ internal fun MemoDrawer(
                 Text("想法有颜色，记录有归处", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        MemoSection.entries.forEach { section ->
+        MemoSection.entries.filterNot { it == MemoSection.REMINDERS }.forEach { section ->
             val count = notes.count { it.inSection(section) }
             NavigationDrawerItem(
                 selected = selected == section,

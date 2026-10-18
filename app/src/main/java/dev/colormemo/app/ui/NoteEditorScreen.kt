@@ -31,7 +31,9 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FormatBold
+import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreVert
@@ -197,9 +199,11 @@ internal fun NoteEditorScreen(
                         if (!preview) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                                 MarkdownAction(Icons.Outlined.FormatBold, "加粗", saving) { content = content.insert("**", "**", "文字"); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.FormatItalic, "斜体", saving) { content = content.insert("*", "*", "文字"); focusRequester.requestFocus() }
                                 TextButton(onClick = { content = content.insert("# ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving) { Text("H₁", style = MaterialTheme.typography.titleMedium) }
                                 TextButton(onClick = { content = content.insert("## ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving) { Text("H₂", style = MaterialTheme.typography.titleMedium) }
                                 MarkdownAction(Icons.AutoMirrored.Outlined.FormatListBulleted, "插入列表", saving) { content = content.insert("- ", "", "列表项", block = true); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.FormatListNumbered, "插入有序列表", saving) { content = content.insert("1. ", "", "列表项", block = true); focusRequester.requestFocus() }
                                 MarkdownAction(Icons.Outlined.CheckBox, "插入待办清单", saving) { content = content.insert("- [ ] ", "", "待办事项", block = true); focusRequester.requestFocus() }
                                 MarkdownAction(Icons.Outlined.Link, "插入链接", saving) { content = content.insert("[", "](https://)", "链接文字"); focusRequester.requestFocus() }
                                 MarkdownAction(Icons.Outlined.Code, "插入代码块", saving) { content = content.insert("```\n", "\n```", "代码", block = true); focusRequester.requestFocus() }
