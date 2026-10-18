@@ -4,7 +4,6 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import dev.colormemo.core.sync.SyncJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,7 +35,7 @@ class SecureSettingsStore(context: Context) {
         cipher.init(Cipher.DECRYPT_MODE, key(create = false), GCMParameterSpec(128, packed.copyOfRange(0, IV_BYTES)))
         cipher.updateAAD(AAD)
         val json = cipher.doFinal(packed.copyOfRange(IV_BYTES, packed.size)).toString(Charsets.UTF_8)
-        mutableSettings.value = SyncJson.json.decodeFromString<SyncPreferences>(json).also {
+        mutableSettings.value = SyncSettingsJson.decodeFromString<SyncPreferences>(json).also {
             require(it.provider in setOf("WEBDAV", "S3", "R2")) { "不支持的同步设置版本" }
         }
     }
@@ -46,7 +45,7 @@ class SecureSettingsStore(context: Context) {
         cipher.init(Cipher.ENCRYPT_MODE, key(create = true))
         cipher.updateAAD(AAD)
         check(cipher.iv.size == IV_BYTES)
-        val encrypted = cipher.doFinal(SyncJson.json.encodeToString(value).toByteArray(Charsets.UTF_8))
+        val encrypted = cipher.doFinal(SyncSettingsJson.encodeToString(value).toByteArray(Charsets.UTF_8))
         val packed = Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)
         check(preferences.edit().putString("sync_encrypted_v1", packed).commit()) { "同步设置保存失败" }
         mutableSettings.value = value

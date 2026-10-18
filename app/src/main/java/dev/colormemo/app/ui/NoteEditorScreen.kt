@@ -54,6 +54,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -81,6 +82,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.colormemo.app.ui.theme.containerColor
 import dev.colormemo.app.ui.theme.displayName
@@ -130,6 +132,7 @@ internal fun NoteEditorScreen(
     var showLeaveDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
+    var showWhiteboardDetails by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
@@ -186,11 +189,13 @@ internal fun NoteEditorScreen(
                     Text(
                         when {
                             readOnly -> if (whiteboard != null) "回收站白板" else "回收站便笺"
-                            whiteboard != null -> if (note == null) "新白板" else "编辑白板"
+                            whiteboard != null -> title.ifBlank { if (note == null) "新白板" else "编辑白板" }
                             note == null -> "新便笺"
                             else -> "编辑便笺"
                         },
                         style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = { IconButton(onClick = close, enabled = !saving) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") } },
@@ -216,6 +221,9 @@ internal fun NoteEditorScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                     if (readOnly) {
                         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (whiteboard != null) {
+                                TextButton(onClick = { showWhiteboardDetails = true }, modifier = Modifier.weight(1f)) { Text("标题与说明") }
+                            }
                             TextButton(onClick = { showDeleteDialog = true }, modifier = Modifier.weight(1f)) { Text("彻底删除", color = MaterialTheme.colorScheme.error) }
                             Button(onClick = { callbacks.onRestore(note.id); onClose() }, modifier = Modifier.weight(1f)) { Text("恢复便笺") }
                         }
@@ -251,13 +259,17 @@ internal fun NoteEditorScreen(
                                 }
                             }
                             Spacer(Modifier.weight(1f))
-                            if (whiteboard == null) TextButton(onClick = {
-                                requestEditorFocus = preview
-                                preview = !preview
-                            }, enabled = !saving) {
-                                Icon(if (preview) Icons.Outlined.Edit else Icons.Outlined.Preview, null, Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(if (preview) "编辑" else "预览")
+                            if (whiteboard != null) {
+                                TextButton(onClick = { showWhiteboardDetails = true }, enabled = !saving) { Text("标题与说明") }
+                            } else {
+                                TextButton(onClick = {
+                                    requestEditorFocus = preview
+                                    preview = !preview
+                                }, enabled = !saving) {
+                                    Icon(if (preview) Icons.Outlined.Edit else Icons.Outlined.Preview, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(if (preview) "编辑" else "预览")
+                                }
                             }
                         }
                     }
@@ -266,7 +278,10 @@ internal fun NoteEditorScreen(
         },
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp),
+            Modifier.fillMaxSize().padding(padding).then(
+                if (whiteboard != null) Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                else Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp),
+            ),
         ) {
             if (remoteChanged && !readOnly) {
                 EditorNotice("其他设备已修改这条便笺。保存时会保留两份修改。")
@@ -284,33 +299,14 @@ internal fun NoteEditorScreen(
                     if (!readOnly) IconButton(onClick = { reminderAt = null }, enabled = !saving) { Icon(Icons.Outlined.Close, "移除提醒", Modifier.size(18.dp)) }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            if (whiteboard == null) Spacer(Modifier.height(8.dp))
             if (whiteboard != null) {
-                if (readOnly) {
-                    if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 20.dp))
-                } else {
-                    BasicTextField(
-                        value = title,
-                        onValueChange = { if (it.length <= MAX_TITLE_LENGTH) title = it },
-                        enabled = !saving,
-                        textStyle = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        decorationBox = { field ->
-                            Box {
-                                if (title.isEmpty()) Text("白板标题（可选）", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f))
-                                field()
-                            }
-                        },
-                    )
-                }
                 WhiteboardEditor(
                     whiteboard = whiteboard!!,
                     onWhiteboardChange = { whiteboard = it },
                     readOnly = readOnly || saving,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
-                if (content.text.isNotBlank()) MarkdownPreview(content.text)
             } else if (preview || readOnly) {
                 if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 20.dp))
                 if (content.text.isBlank()) Text("还没有正文", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -347,7 +343,7 @@ internal fun NoteEditorScreen(
                     },
                 )
             }
-            if (content.text.length >= MAX_CONTENT_LENGTH || title.length >= MAX_TITLE_LENGTH) {
+            if (whiteboard == null && (content.text.length >= MAX_CONTENT_LENGTH || title.length >= MAX_TITLE_LENGTH)) {
                 Text("标题最多 500 字，正文最多 100,000 字。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             // Scaffold subcomposes its content; request focus only after this field's composition.
@@ -362,6 +358,21 @@ internal fun NoteEditorScreen(
                 }
             }
         }
+    }
+    if (showWhiteboardDetails && whiteboard != null) {
+        WhiteboardDetailsDialog(
+            title = title,
+            content = content,
+            onTitleChange = { if (it.length <= MAX_TITLE_LENGTH) title = it },
+            onContentChange = { if (it.text.length <= MAX_CONTENT_LENGTH) content = it },
+            readOnly = readOnly,
+            enabled = !saving,
+            onDismiss = {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+                showWhiteboardDetails = false
+            },
+        )
     }
     if (showReminder) {
         ReminderPickerDialog(
@@ -409,7 +420,7 @@ internal fun NoteEditorScreen(
             title = { Text(if (whiteboard != null) "在白板上记录" else "用 Markdown 记录") },
             text = {
                 if (whiteboard != null) {
-                    Text("用手指或触控笔绘画，可选择笔迹颜色和粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n在画布外滑动可滚动页面，点击「保存」保留白板。")
+                    Text("单指或触控笔写画，双指拖动画布或捏合缩放；选择「移动」后也可单指拖动。点击「全图」回到完整画布。\n\n画笔设置可调整颜色和粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。")
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text("用底部工具栏插入格式，点击「预览」查看排版。")
@@ -421,6 +432,58 @@ internal fun NoteEditorScreen(
             confirmButton = { TextButton(onClick = { showHelp = false }) { Text("知道了") } },
         )
     }
+}
+
+@Composable
+private fun WhiteboardDetailsDialog(
+    title: String,
+    content: TextFieldValue,
+    onTitleChange: (String) -> Unit,
+    onContentChange: (TextFieldValue) -> Unit,
+    readOnly: Boolean,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("标题与说明") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (readOnly) {
+                    Text(title.ifBlank { "无标题白板" }, style = MaterialTheme.typography.titleLarge)
+                    if (content.text.isBlank()) Text("还没有说明", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else MarkdownPreview(content.text)
+                } else {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = onTitleChange,
+                        enabled = enabled,
+                        label = { Text("白板标题（可选）") },
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = content,
+                        onValueChange = onContentChange,
+                        enabled = enabled,
+                        label = { Text("说明（可选，支持 Markdown）") },
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        minLines = 4,
+                        maxLines = 8,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (content.text.length >= MAX_CONTENT_LENGTH || title.length >= MAX_TITLE_LENGTH) {
+                        Text("标题最多 500 字，说明最多 100,000 字。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(if (readOnly) "关闭" else "完成") } },
+    )
 }
 
 @Composable

@@ -1,11 +1,12 @@
-# 彩笺 · ColorMemo 0.2.0
+# 彩笺 · ColorMemo 0.2.1
 
 支持 Android 8.0 及以上版本，可覆盖安装旧版本升级。
 
-- 支持白板笔记，可手写、涂鸦、擦除和继续编辑，随笔记同步并导出为 SVG。
+- 白板编辑体验改进：画布支持双指平移与缩放、单指移动和一键查看全图，并可在独立面板中编辑标题与说明。
+- 移除同步间隔配置；开启自动同步后固定每 15 分钟检查其他设备的更新。
 - 云同步强制端到端加密：文字、白板及修订信息均使用 AES-256-GCM 在设备上加密，各设备共享一份恢复密钥。
 
-下载 `ColorMemo-v0.2.0.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
+下载 `ColorMemo-v0.2.1.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
 签名证书 SHA-256：
 

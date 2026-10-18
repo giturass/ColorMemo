@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.os.PersistableBundle
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -256,27 +255,6 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                     HorizontalDivider()
                     SettingsToggle("自动同步", "修改后同步，并定期检查其他设备的更新", draft.automaticSync, { draft = draft.copy(automaticSync = it) })
                     if (draft.automaticSync) {
-                        Text("同步间隔", style = MaterialTheme.typography.titleSmall)
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            SyncIntervalUi.entries.forEach { interval ->
-                                FilterChip(
-                                    selected = draft.syncInterval == interval,
-                                    onClick = {
-                                        draft = draft.copy(syncInterval = interval)
-                                        validationError = null
-                                    },
-                                    label = { Text(interval.label) },
-                                )
-                            }
-                        }
-                        Text(
-                            "后台同步间隔最短为 15 分钟；系统可能根据网络和省电策略延后执行。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                         SettingsToggle("仅在不计费网络自动同步", "手动同步不受此项限制", draft.wifiOnly, { draft = draft.copy(wifiOnly = it) })
                     }
                 }

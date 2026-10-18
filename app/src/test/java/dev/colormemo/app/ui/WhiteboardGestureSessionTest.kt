@@ -1,0 +1,180 @@
+package dev.colormemo.app.ui
+
+import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardPoint
+import dev.colormemo.core.model.WhiteboardStroke
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class WhiteboardGestureSessionTest {
+    @Test
+    fun tapImmediatelyPublishesOneDotWithSelectedInk() {
+        val before = Whiteboard()
+        val session = session(before, color = 0xFF1967D2L, width = 14f)
+        val down = point(100f, 200f)
+
+        val working = session.begin(down)
+        session.update(down, finalPoint = true)
+
+        assertEquals(listOf(WhiteboardStroke(0xFF1967D2L, 14f, listOf(down))), working.strokes)
+        assertEquals(working, session.working)
+        assertTrue(session.hasChanges)
+        assertTrue(before.strokes.isEmpty())
+    }
+
+    @Test
+    fun samplingMeasuresFromLastRecordedPointAndAlwaysKeepsShortFinalMovement() {
+        val session = session()
+        session.begin(point(0f, 0f))
+
+        session.update(point(1f, 1f))
+        assertEquals(listOf(point(0f, 0f)), session.working.strokes.single().points)
+        session.update(point(1.5f, 2f))
+        session.update(point(2f, 2.5f), finalPoint = true)
+
+        assertEquals(
+            listOf(point(0f, 0f), point(1.5f, 2f), point(2f, 2.5f)),
+            session.working.strokes.single().points,
+        )
+    }
+
+    @Test
+    fun secondFingerRollsBackVisibleStrokeAndDoesNotCreateAnUndoEntry() {
+        val before = Whiteboard(listOf(stroke(100f, 500f, 900f, 500f)))
+        val session = session(before)
+        session.begin(point(100f, 100f))
+        session.update(point(300f, 100f))
+        assertTrue(session.hasChanges)
+
+        assertSame(before, session.startNavigation())
+
+        assertFalse(session.hasChanges)
+        assertTrue(session.isNavigating)
+        assertSame(before, session.working)
+    }
+
+    @Test
+    fun navigationIgnoresRemainingFingerAndFinalUp() {
+        val session = session()
+        session.begin(point(100f, 100f))
+        session.startNavigation()
+
+        session.update(point(300f, 100f))
+        session.update(point(301f, 100f), finalPoint = true)
+        session.begin(point(500f, 500f))
+
+        assertSame(session.before, session.working)
+        assertFalse(session.hasChanges)
+        assertTrue(session.isNavigating)
+    }
+
+    @Test
+    fun eraserTapAndFastSwipeAreVisibleButNavigationRestoresOriginalStrokeOrder() {
+        val first = stroke(100f, 100f, 900f, 100f)
+        val second = stroke(100f, 500f, 900f, 500f)
+        val third = stroke(100f, 900f, 900f, 900f)
+        val before = Whiteboard(listOf(first, second, third))
+        val session = session(before, erasing = true)
+
+        assertEquals(listOf(second, third), session.begin(point(500f, 100f)).strokes)
+        assertEquals(listOf(third), session.update(point(500f, 700f)).strokes)
+        assertTrue(session.hasChanges)
+        session.startNavigation()
+        session.update(point(500f, 900f), finalPoint = true)
+
+        assertSame(before, session.working)
+        assertEquals(listOf(first, second, third), session.working.strokes)
+        assertFalse(session.hasChanges)
+    }
+
+    @Test
+    fun erasingEmptyAreaDoesNotCreateAnUndoEntry() {
+        val before = Whiteboard(listOf(stroke(100f, 500f, 900f, 500f)))
+        val session = session(before, erasing = true)
+
+        session.begin(point(100f, 100f))
+        session.update(point(900f, 100f), finalPoint = true)
+
+        assertSame(before, session.working)
+        assertFalse(session.hasChanges)
+    }
+
+    @Test
+    fun strokeLimitStillAllowsNavigation() {
+        val dot = WhiteboardStroke(points = listOf(point(100f, 100f)))
+        val before = Whiteboard(List(Whiteboard.MAX_STROKES) { dot })
+        val session = session(before)
+
+        assertSame(before, session.begin(point(500f, 500f)))
+        assertTrue(session.limitReached)
+        assertFalse(session.hasChanges)
+        session.startNavigation()
+
+        assertTrue(session.isNavigating)
+        assertFalse(session.limitReached)
+        assertSame(before, session.working)
+    }
+
+    @Test
+    fun pointLimitStillAllowsNavigationWithoutModifyingExistingStroke() {
+        val stroke = WhiteboardStroke(points = List(Whiteboard.MAX_POINTS) { point(100f, 100f) })
+        val before = Whiteboard(listOf(stroke))
+        val session = session(before)
+
+        session.begin(point(500f, 500f))
+        session.update(point(700f, 500f), finalPoint = true)
+        assertTrue(session.limitReached)
+        assertSame(before, session.working)
+        session.startNavigation()
+
+        assertTrue(session.isNavigating)
+        assertFalse(session.hasChanges)
+        assertSame(before, session.working)
+    }
+
+    @Test
+    fun reachingPointLimitDuringStrokeCanStillRollbackForNavigation() {
+        val stroke = WhiteboardStroke(points = List(Whiteboard.MAX_POINTS - 2) { point(100f, 100f) })
+        val before = Whiteboard(listOf(stroke))
+        val session = session(before)
+        session.begin(point(500f, 500f))
+        session.update(point(600f, 500f))
+        session.update(point(700f, 500f))
+
+        assertTrue(session.limitReached)
+        assertEquals(Whiteboard.MAX_POINTS, session.working.strokes.sumOf { it.points.size })
+        assertTrue(session.hasChanges)
+        session.startNavigation()
+
+        assertFalse(session.hasChanges)
+        assertSame(before, session.working)
+    }
+
+    @Test
+    fun eraserStillWorksAtCapacity() {
+        val stroke = WhiteboardStroke(points = List(Whiteboard.MAX_POINTS) { point(100f, 100f) })
+        val before = Whiteboard(listOf(stroke))
+        val session = session(before, erasing = true)
+
+        session.begin(point(100f, 100f))
+
+        assertTrue(session.working.strokes.isEmpty())
+        assertTrue(session.hasChanges)
+        assertFalse(session.limitReached)
+    }
+
+    private fun session(
+        before: Whiteboard = Whiteboard(),
+        erasing: Boolean = false,
+        color: Long = 0xFF202124L,
+        width: Float = 6f,
+    ) = WhiteboardGestureSession(before, erasing, color, width)
+
+    private fun point(x: Float, y: Float) = WhiteboardPoint(x, y)
+
+    private fun stroke(x1: Float, y1: Float, x2: Float, y2: Float) =
+        WhiteboardStroke(points = listOf(point(x1, y1), point(x2, y2)))
+}

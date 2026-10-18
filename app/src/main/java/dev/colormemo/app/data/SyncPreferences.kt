@@ -1,10 +1,13 @@
 package dev.colormemo.app.data
 
-import dev.colormemo.app.ui.SyncIntervalUi
 import dev.colormemo.app.ui.SyncProviderUi
 import dev.colormemo.app.ui.SyncSettingsUi
 import dev.colormemo.core.sync.RemoteConfig
+import dev.colormemo.core.sync.SyncJson
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+internal val SyncSettingsJson = Json(SyncJson.json) { ignoreUnknownKeys = true }
 
 @Serializable
 data class SyncPreferences(
@@ -20,13 +23,12 @@ data class SyncPreferences(
     val sessionToken: String = "",
     val pathPrefix: String = "colormemo",
     val automaticSync: Boolean = true,
-    val syncIntervalMinutes: Int = 15,
     val wifiOnly: Boolean = false,
     val encryptionKey: String = "",
 ) {
     // Settings can appear in diagnostics; never include credentials or recovery keys.
     override fun toString(): String = "SyncPreferences(enabled=$enabled, provider=$provider, " +
-        "automaticSync=$automaticSync, syncIntervalMinutes=$syncIntervalMinutes, wifiOnly=$wifiOnly, " +
+        "automaticSync=$automaticSync, wifiOnly=$wifiOnly, " +
         "credentials=[REDACTED], encryptionKey=[REDACTED])"
 
     fun remoteConfig(): RemoteConfig = when (provider) {
@@ -56,8 +58,6 @@ data class SyncPreferences(
         sessionToken = sessionToken,
         pathPrefix = pathPrefix,
         automaticSync = automaticSync,
-        syncInterval = SyncIntervalUi.entries.firstOrNull { it.minutes == syncIntervalMinutes }
-            ?: SyncIntervalUi.FIFTEEN_MINUTES,
         wifiOnly = wifiOnly,
         encryptionKey = encryptionKey,
     )
@@ -76,7 +76,6 @@ data class SyncPreferences(
             sessionToken = value.sessionToken.trim(),
             pathPrefix = value.pathPrefix.trim().trim('/'),
             automaticSync = value.automaticSync,
-            syncIntervalMinutes = value.syncInterval.minutes,
             wifiOnly = value.wifiOnly,
             encryptionKey = value.encryptionKey.trim(),
         )

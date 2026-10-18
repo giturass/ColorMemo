@@ -39,6 +39,15 @@ class SyncPreferencesTest {
     }
 
     @Test
+    fun legacySyncIntervalSettingIsIgnoredAndNoLongerSaved() {
+        val legacy = """{"enabled":true,"provider":"R2","syncIntervalMinutes":1440}"""
+        val restored = SyncSettingsJson.decodeFromString<SyncPreferences>(legacy)
+        assertEquals(true, restored.enabled)
+        assertEquals("R2", restored.provider)
+        assertFalse(SyncSettingsJson.encodeToString(restored).contains("syncIntervalMinutes"))
+    }
+
+    @Test
     fun diagnosticsDoNotExposeCredentialsOrRecoveryKey() {
         val secrets = listOf(
             "private-endpoint", "private-username", "private-password", "private-access-id",

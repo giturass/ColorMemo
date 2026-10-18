@@ -18,6 +18,7 @@
 - [Markwon 核心 API](https://noties.io/Markwon/docs/v4/core/getting-started.html)：TextView 渲染 Markdown，不启用网络图片插件。
 - [Android 自适应图标](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive)：前景、背景和 monochrome 图层；Android 13 起支持主题图标。
 - [Compose 手势处理](https://developer.android.com/develop/ui/compose/touch-input/pointer-input/understand-gestures)（2026-10-18）：`awaitEachGesture` / `awaitFirstDown` 处理连续笔画，事件传播顺序及 `consume()` 避免绘画手势同时滚动编辑页。
+- [Compose 多点触控](https://developer.android.com/develop/ui/compose/touch-input/pointer-input/multi-touch) 与 [AndroidX 手势实现](https://github.com/androidx/androidx/blob/androidx-main/compose/foundation/foundation/src/commonMain/kotlin/androidx/compose/foundation/gestures/TransformGestureDetector.kt)（2026-10-18）：以持续按下的触点计算中心、平移和缩放，避免触点增减造成画布跳动；绘画与导航共用一次手势循环，双指接管时回滚本次临时笔迹。缩放和平移仅改变视图，保存与导出沿用原有白板坐标。
 - [SVG 2 笔画绘制](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty)（2026-10-18）：圆帽、圆角与单点笔画的表现；白板导出使用固定方形坐标，单点显式绘制为圆形。文件仍通过上述 Storage Access Framework 写入用户选择的 ZIP，不新增存储权限。
 
 WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹钟及通知权限的参考链接见 [提醒说明](reminders.md)。

@@ -199,24 +199,13 @@ internal fun NotesScreen(
         },
         floatingActionButton = {
             if (section != MemoSection.TRASH) {
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (section == MemoSection.NOTES) {
-                        ExtendedFloatingActionButton(
-                            onClick = onCreateWhiteboard,
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            icon = { Icon(Icons.Outlined.Draw, contentDescription = null) },
-                            text = { Text("白板") },
-                        )
-                    }
-                    ExtendedFloatingActionButton(
-                        onClick = { if (section == MemoSection.WHITEBOARDS) onCreateWhiteboard() else onOpenNote(null) },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                        text = { Text(if (section == MemoSection.WHITEBOARDS) "新建白板" else "写一条", fontWeight = FontWeight.SemiBold) },
-                    )
-                }
+                ExtendedFloatingActionButton(
+                    onClick = { if (section == MemoSection.WHITEBOARDS) onCreateWhiteboard() else onOpenNote(null) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                    text = { Text(if (section == MemoSection.WHITEBOARDS) "新建白板" else "写一条", fontWeight = FontWeight.SemiBold) },
+                )
             }
         },
     ) { padding ->
