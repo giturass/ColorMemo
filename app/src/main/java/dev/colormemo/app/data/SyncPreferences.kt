@@ -1,5 +1,6 @@
 package dev.colormemo.app.data
 
+import dev.colormemo.app.ui.SyncIntervalUi
 import dev.colormemo.app.ui.SyncProviderUi
 import dev.colormemo.app.ui.SyncSettingsUi
 import dev.colormemo.core.sync.RemoteConfig
@@ -19,6 +20,7 @@ data class SyncPreferences(
     val sessionToken: String = "",
     val pathPrefix: String = "colormemo",
     val automaticSync: Boolean = true,
+    val syncIntervalMinutes: Int = 15,
     val wifiOnly: Boolean = false,
 ) {
     fun remoteConfig(): RemoteConfig = when (provider) {
@@ -48,6 +50,8 @@ data class SyncPreferences(
         sessionToken = sessionToken,
         pathPrefix = pathPrefix,
         automaticSync = automaticSync,
+        syncInterval = SyncIntervalUi.entries.firstOrNull { it.minutes == syncIntervalMinutes }
+            ?: SyncIntervalUi.FIFTEEN_MINUTES,
         wifiOnly = wifiOnly,
     )
 
@@ -65,6 +69,7 @@ data class SyncPreferences(
             sessionToken = value.sessionToken.trim(),
             pathPrefix = value.pathPrefix.trim().trim('/'),
             automaticSync = value.automaticSync,
+            syncIntervalMinutes = value.syncInterval.minutes,
             wifiOnly = value.wifiOnly,
         )
     }

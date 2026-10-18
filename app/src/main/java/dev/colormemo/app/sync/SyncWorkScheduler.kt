@@ -21,7 +21,10 @@ class SyncWorkScheduler(context: Context) {
             manager.cancelUniqueWork(AFTER_EDIT)
             return
         }
-        val work = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
+        val work = PeriodicWorkRequestBuilder<SyncWorker>(
+            settings.syncIntervalMinutes.coerceAtLeast(MIN_INTERVAL_MINUTES).toLong(),
+            TimeUnit.MINUTES,
+        )
             .setConstraints(constraints(settings))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
@@ -46,5 +49,6 @@ class SyncWorkScheduler(context: Context) {
     private companion object {
         const val PERIODIC = "colormemo-periodic-sync"
         const val AFTER_EDIT = "colormemo-after-edit-sync"
+        const val MIN_INTERVAL_MINUTES = 15
     }
 }

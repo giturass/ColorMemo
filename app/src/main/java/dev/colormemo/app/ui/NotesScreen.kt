@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.DeleteForever
@@ -136,6 +137,7 @@ internal fun NotesScreen(
     onOpenNote: (Note?) -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    var searchActive by rememberSaveable { mutableStateOf(false) }
     var pinnedOnly by rememberSaveable { mutableStateOf(false) }
     var compactGrid by rememberSaveable { mutableStateOf(true) }
     var colorFilter by rememberSaveable { mutableStateOf<NoteColor?>(null) }
@@ -158,13 +160,38 @@ internal fun NotesScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        MemoBrandMark(size = 32.dp)
-                        Spacer(Modifier.width(7.dp))
-                        Text("彩笺", fontWeight = FontWeight.SemiBold)
+                    if (searchActive) {
+                        NotesSearchField(
+                            query = query,
+                            onQueryChange = { query = it },
+                            placeholder = "搜索${section.label}…",
+                        )
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            MemoBrandMark(size = 32.dp)
+                            Spacer(Modifier.width(7.dp))
+                            Text("彩笺", fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 },
                 navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, "打开导航") } },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            if (searchActive) {
+                                query = ""
+                                searchActive = false
+                            } else {
+                                searchActive = true
+                            }
+                        },
+                    ) {
+                        Icon(
+                            if (searchActive) Icons.Outlined.Close else Icons.Outlined.Search,
+                            if (searchActive) "关闭搜索" else "搜索",
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -213,7 +240,12 @@ internal fun NotesScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    FilterChip(selected = !pinnedOnly && colorFilter == null, onClick = { pinnedOnly = false; colorFilter = null }, label = { Text("全部") })
+                    FilterChip(
+                        selected = !pinnedOnly && colorFilter == null,
+                        onClick = { pinnedOnly = false; colorFilter = null },
+                        label = { Text("全部") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Notes, null, Modifier.size(16.dp)) },
+                    )
                     FilterChip(
                         selected = pinnedOnly,
                         onClick = { pinnedOnly = !pinnedOnly },
@@ -247,24 +279,6 @@ internal fun NotesScreen(
                     )
                 }
             }
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-                placeholder = { Text("搜索${section.label}…") },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Clear, "清除搜索") }
-                },
-                shape = CircleShape,
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                ),
-            )
             if (state.syncSettings.enabled) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, bottom = 4.dp),
@@ -344,6 +358,32 @@ private fun NoteGroupLabel(label: String) {
         modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun NotesSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    placeholder: String,
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+        placeholder = { Text(placeholder) },
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) IconButton(onClick = { onQueryChange("") }) { Icon(Icons.Outlined.Clear, "清除搜索") }
+        },
+        shape = CircleShape,
+        colors = OutlinedTextFieldDefaults.colors(
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            unfocusedBorderColor = Color.Transparent,
+            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+        ),
     )
 }
 

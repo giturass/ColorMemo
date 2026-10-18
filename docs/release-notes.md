@@ -1,12 +1,12 @@
-# 彩笺 · ColorMemo 0.1.6
+# 彩笺 · ColorMemo 0.1.7
 
 支持 Android 8.0 及以上版本，可覆盖安装旧版本升级。
 
-- 移除首页「灵感，随手记。」标题，将「全部」「置顶」「颜色」筛选按钮上移，与右侧查看模式按钮居中对齐。
-- 移除筛选按钮右侧的便笺数量。
-- 搜索框调整为胶囊形。
+- 「全部」筛选增加与「置顶」「颜色」协调的图标。
+- 搜索框收起为右上角搜索键，点击后在顶栏展开。
+- 同步设置支持选择 15 分钟到 24 小时的自动同步间隔。
 
-下载 `ColorMemo-v0.1.6.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
+下载 `ColorMemo-v0.1.7.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
 签名证书 SHA-256：
 

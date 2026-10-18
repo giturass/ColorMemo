@@ -36,6 +36,15 @@ enum class SyncProviderUi(val label: String) {
     R2("Cloudflare R2"),
 }
 
+enum class SyncIntervalUi(val minutes: Int, val label: String) {
+    FIFTEEN_MINUTES(15, "15 分钟"),
+    THIRTY_MINUTES(30, "30 分钟"),
+    ONE_HOUR(60, "1 小时"),
+    SIX_HOURS(360, "6 小时"),
+    TWELVE_HOURS(720, "12 小时"),
+    ONE_DAY(1440, "24 小时"),
+}
+
 data class SyncSettingsUi(
     val enabled: Boolean = false,
     val provider: SyncProviderUi = SyncProviderUi.WEBDAV,
@@ -49,6 +58,7 @@ data class SyncSettingsUi(
     val sessionToken: String = "",
     val pathPrefix: String = "colormemo",
     val automaticSync: Boolean = true,
+    val syncInterval: SyncIntervalUi = SyncIntervalUi.FIFTEEN_MINUTES,
     val wifiOnly: Boolean = false,
 )
 

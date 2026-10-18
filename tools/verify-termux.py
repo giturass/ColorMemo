@@ -92,6 +92,12 @@ def main():
     for directory in ["tmp", "android-user-home", "gradle"]:
         (WORK / directory).mkdir(exist_ok=True)
     env = os.environ.copy()
+    termux_lib = Path("/data/data/com.termux/files/usr/lib")
+    if termux_lib.is_dir():
+        inherited_libraries = env.get("LD_LIBRARY_PATH", "")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            [str(termux_lib), *(part for part in inherited_libraries.split(os.pathsep) if part)]
+        )
     env.update({
         "GRADLE_USER_HOME": str(WORK / "gradle"),
         "ANDROID_USER_HOME": str(WORK / "android-user-home"),
