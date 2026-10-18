@@ -1,12 +1,12 @@
-# 彩笺 · ColorMemo 0.1.7
+# 彩笺 · ColorMemo 0.1.8
 
 支持 Android 8.0 及以上版本，可覆盖安装旧版本升级。
 
-- 「全部」筛选增加与「置顶」「颜色」协调的图标。
-- 搜索框收起为右上角搜索键，点击后在顶栏展开。
-- 同步设置支持选择 15 分钟到 24 小时的自动同步间隔。
+- 主界面卡片网格与列表模式分别限制最大宽高比为 3:4 和 4:3。
+- 「同步与设置」入口与设置页标题简化为「设置」。
+- 设置页提醒卡片移动到云同步配置卡片上方。
 
-下载 `ColorMemo-v0.1.7.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
+下载 `ColorMemo-v0.1.8.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
 签名证书 SHA-256：
 

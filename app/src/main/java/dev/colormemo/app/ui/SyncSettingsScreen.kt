@@ -85,7 +85,7 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
         modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
-                title = { Text("同步与设置") },
+                title = { Text("设置") },
                 navigationIcon = { IconButton(onClick = close) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") } },
             )
         },
@@ -94,6 +94,17 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            SettingsCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.NotificationsNone, null, Modifier.size(22.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("提醒", style = MaterialTheme.typography.titleMedium)
+                }
+                PermissionRow("通知权限", state.notificationPermissionGranted, callbacks.onRequestNotificationPermission)
+                PermissionRow("准时提醒", state.exactAlarmAllowed, callbacks.onRequestExactAlarmPermission)
+                Text("提醒在本机触发。主题跟随系统深色或浅色模式。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
             SettingsCard {
                 SettingsToggle(
                     title = "启用云同步",
@@ -217,17 +228,6 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                     Spacer(Modifier.width(8.dp))
                     Text(if (state.syncing) "同步中…" else "立即同步")
                 }
-            }
-
-            SettingsCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.NotificationsNone, null, Modifier.size(22.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text("提醒", style = MaterialTheme.typography.titleMedium)
-                }
-                PermissionRow("通知权限", state.notificationPermissionGranted, callbacks.onRequestNotificationPermission)
-                PermissionRow("准时提醒", state.exactAlarmAllowed, callbacks.onRequestExactAlarmPermission)
-                Text("提醒在本机触发。主题跟随系统深色或浅色模式。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             if (callbacks.onExportNotes != null || callbacks.onImportNotes != null || callbacks.onExportMarkdown != null) {
