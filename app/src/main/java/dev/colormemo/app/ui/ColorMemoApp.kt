@@ -32,13 +32,13 @@ import kotlinx.serialization.json.Json
 private enum class MemoScreen { NOTES, EDITOR, SETTINGS }
 
 internal enum class MemoSection(val label: String) {
-    NOTES("便笺"), REMINDERS("提醒"), ARCHIVE("归档"), TRASH("回收站")
+    NOTES("便笺"), WHITEBOARDS("白板"), REMINDERS("提醒"), ARCHIVE("归档"), TRASH("回收站")
 }
 
 private val SnapshotJson = Json { ignoreUnknownKeys = true }
 private val NoteSnapshotSaver = Saver<Note?, String>(
     // Draft fields are saved separately. Keep only the concurrency baseline here.
-    save = { note -> note?.let { SnapshotJson.encodeToString(it.copy(title = "", content = "")) } ?: "" },
+    save = { note -> note?.let { SnapshotJson.encodeToString(it.copy(title = "", content = "", whiteboard = null)) } ?: "" },
     restore = { value -> value.takeIf(String::isNotEmpty)?.let { SnapshotJson.decodeFromString<Note>(it) } },
 )
 
@@ -51,6 +51,7 @@ fun ColorMemoApp(
     var screen by rememberSaveable { mutableStateOf(MemoScreen.NOTES) }
     var section by rememberSaveable { mutableStateOf(MemoSection.NOTES) }
     var editingNote by rememberSaveable(stateSaver = NoteSnapshotSaver) { mutableStateOf<Note?>(null) }
+    var editingWhiteboard by rememberSaveable { mutableStateOf(false) }
     var editorSession by rememberSaveable { mutableLongStateOf(0L) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -58,6 +59,7 @@ fun ColorMemoApp(
 
     val openNote: (Note?) -> Unit = { note ->
         editingNote = note
+        editingWhiteboard = note?.whiteboard != null
         editorSession += 1
         screen = MemoScreen.EDITOR
     }
@@ -108,6 +110,7 @@ fun ColorMemoApp(
                     section = section,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     onOpenNote = openNote,
+                    onCreateWhiteboard = { openNote(null); editingWhiteboard = true },
                 )
                 MemoScreen.EDITOR -> key(editorSession) {
                     NoteEditorScreen(
@@ -115,6 +118,7 @@ fun ColorMemoApp(
                         state = state,
                         callbacks = callbacks,
                         onClose = { screen = MemoScreen.NOTES },
+                        newWhiteboard = editingWhiteboard,
                     )
                 }
                 MemoScreen.SETTINGS -> SyncSettingsScreen(

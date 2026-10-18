@@ -22,7 +22,13 @@ data class SyncPreferences(
     val automaticSync: Boolean = true,
     val syncIntervalMinutes: Int = 15,
     val wifiOnly: Boolean = false,
+    val encryptionKey: String = "",
 ) {
+    // Settings can appear in diagnostics; never include credentials or recovery keys.
+    override fun toString(): String = "SyncPreferences(enabled=$enabled, provider=$provider, " +
+        "automaticSync=$automaticSync, syncIntervalMinutes=$syncIntervalMinutes, wifiOnly=$wifiOnly, " +
+        "credentials=[REDACTED], encryptionKey=[REDACTED])"
+
     fun remoteConfig(): RemoteConfig = when (provider) {
         "WEBDAV" -> RemoteConfig.WebDav(endpoint.trim(), username, password)
         "S3", "R2" -> RemoteConfig.S3(
@@ -53,6 +59,7 @@ data class SyncPreferences(
         syncInterval = SyncIntervalUi.entries.firstOrNull { it.minutes == syncIntervalMinutes }
             ?: SyncIntervalUi.FIFTEEN_MINUTES,
         wifiOnly = wifiOnly,
+        encryptionKey = encryptionKey,
     )
 
     companion object {
@@ -71,6 +78,7 @@ data class SyncPreferences(
             automaticSync = value.automaticSync,
             syncIntervalMinutes = value.syncInterval.minutes,
             wifiOnly = value.wifiOnly,
+            encryptionKey = value.encryptionKey.trim(),
         )
     }
 }

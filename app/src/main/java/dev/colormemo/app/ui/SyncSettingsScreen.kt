@@ -1,5 +1,8 @@
 package dev.colormemo.app.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.os.PersistableBundle
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -54,6 +59,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -62,22 +69,34 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.colormemo.app.BuildConfig
+import dev.colormemo.core.sync.SyncEncryptionKey
 import java.net.URI
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val clipboard = remember(context) { context.getSystemService(ClipboardManager::class.java) }
     // Credentials intentionally stay out of savedInstanceState / unencrypted Bundles.
     var draft by remember(state.syncSettings) { mutableStateOf(state.syncSettings) }
     var validationError by remember { mutableStateOf<String?>(null) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var advanced by rememberSaveable { mutableStateOf(false) }
+    var recoveryKeySaved by remember(state.syncSettings, draft.encryptionKey) { mutableStateOf(false) }
+    var recoveryKeyCopied by remember(draft.encryptionKey) { mutableStateOf(false) }
+    val validRecoveryKey = remember(draft.encryptionKey) {
+        runCatching { SyncEncryptionKey.parse(draft.encryptionKey.trim()) }.isSuccess
+    }
+    val needsRecoveryConfirmation = draft.enabled &&
+        (!state.syncSettings.enabled || state.syncSettings.encryptionKey.isBlank() ||
+            draft.encryptionKey.trim() != state.syncSettings.encryptionKey.trim())
+    val recoveryConfirmed = !needsRecoveryConfirmation || recoveryKeySaved
     val dirty = draft != state.syncSettings
     val close: () -> Unit = { if (dirty) confirmDiscard = true else onBack() }
     val save: () -> Unit = {
         val candidate = draft.normalized()
         validationError = if (candidate.enabled) candidate.validationError() else null
-        if (validationError == null) callbacks.onSaveSyncSettings(candidate)
+        if (validationError == null && recoveryConfirmed) callbacks.onSaveSyncSettings(candidate)
     }
     BackHandler(onBack = close)
 
@@ -171,6 +190,70 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                         SettingsField(draft.pathPrefix, { draft = draft.copy(pathPrefix = it) }, "对象前缀（可留空）", placeholder = "colormemo")
                     }
                     HorizontalDivider()
+                    Text("端到端加密", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "所有同步便笺（包括白板、颜色和提醒）都会在本机加密后上传。每台设备必须使用同一恢复密钥。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SecretField(
+                        value = draft.encryptionKey,
+                        onValueChange = { draft = draft.copy(encryptionKey = it); validationError = null },
+                        label = "恢复密钥",
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            draft = draft.copy(encryptionKey = SyncEncryptionKey.generate())
+                            validationError = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("生成新恢复密钥") }
+                    TextButton(
+                        onClick = {
+                            val key = draft.encryptionKey.trim()
+                            if (clipboard != null && runCatching { SyncEncryptionKey.parse(key) }.isSuccess) {
+                                val clip = ClipData.newPlainText("ColorMemo 恢复密钥", key).apply {
+                                    // Android hides sensitive clips from its copied-content preview.
+                                    description.extras = PersistableBundle().apply {
+                                        // EXTRA_IS_SENSITIVE's documented key also works with older SDKs.
+                                        putBoolean("android.content.extra.IS_SENSITIVE", true)
+                                    }
+                                }
+                                clipboard.setPrimaryClip(clip)
+                                recoveryKeyCopied = true
+                            }
+                        },
+                        enabled = clipboard != null && validRecoveryKey,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("复制恢复密钥") }
+                    if (recoveryKeyCopied) {
+                        Text("恢复密钥已复制", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Text(
+                        "首次设置时生成密钥；连接已有加密数据时，请输入原密钥。新密钥无法解密原有数据。请在应用外安全保存密钥，丢失后无法恢复云端便笺。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (needsRecoveryConfirmation) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().toggleable(
+                                value = recoveryKeySaved,
+                                enabled = draft.encryptionKey.isNotBlank(),
+                                role = Role.Checkbox,
+                                onValueChange = { recoveryKeySaved = it },
+                            ).padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = recoveryKeySaved, onCheckedChange = null, enabled = draft.encryptionKey.isNotBlank())
+                            Text("已在应用外安全保存恢复密钥", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                    Text(
+                        "保存设置后，下一次成功同步才会将便笺以密文上传。本机数据库和手动导出的备份仍是明文。旧版明文云端数据不受支持，请使用新的空目录或对象前缀。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    HorizontalDivider()
                     SettingsToggle("自动同步", "修改后同步，并定期检查其他设备的更新", draft.automaticSync, { draft = draft.copy(automaticSync = it) })
                     if (draft.automaticSync) {
                         Text("同步间隔", style = MaterialTheme.typography.titleSmall)
@@ -205,10 +288,10 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                         OutlinedButton(onClick = {
                             val candidate = draft.normalized()
                             validationError = candidate.validationError()
-                            if (validationError == null) callbacks.onTestSync(candidate)
-                        }, enabled = !state.syncing, modifier = Modifier.weight(1f)) { Text("测试连接") }
+                            if (validationError == null && recoveryConfirmed) callbacks.onTestSync(candidate)
+                        }, enabled = !state.syncing && recoveryConfirmed, modifier = Modifier.weight(1f)) { Text("测试连接") }
                     }
-                    Button(onClick = save, enabled = dirty && !state.syncing, modifier = Modifier.weight(1f)) {
+                    Button(onClick = save, enabled = dirty && !state.syncing && recoveryConfirmed, modifier = Modifier.weight(1f)) {
                         Text(if (dirty) "保存设置" else "已保存")
                     }
                 }
@@ -312,7 +395,7 @@ private fun SecretField(value: String, onValueChange: (String) -> Unit, label: S
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
         trailingIcon = {
-            IconButton(onClick = { visible = !visible }) { Icon(if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (visible) "隐藏凭据" else "显示凭据") }
+            IconButton(onClick = { visible = !visible }) { Icon(if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (visible) "隐藏$label" else "显示$label") }
         },
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth(),
@@ -337,6 +420,7 @@ private fun SyncSettingsUi.normalized(): SyncSettingsUi = copy(
     region = if (provider == SyncProviderUi.R2) "auto" else region.trim(),
     accessKeyId = accessKeyId.trim(),
     pathPrefix = pathPrefix.trim().trim('/'),
+    encryptionKey = encryptionKey.trim(),
 )
 
 private fun SyncSettingsUi.validationError(): String? {
@@ -347,6 +431,9 @@ private fun SyncSettingsUi.validationError(): String? {
     if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) return "服务器地址中不要包含账户、查询参数或片段。"
     if (provider != SyncProviderUi.WEBDAV && (bucket.isBlank() || region.isBlank() || accessKeyId.isBlank() || secretAccessKey.isBlank())) {
         return "请填写存储桶、区域和访问凭据。"
+    }
+    if (runCatching { SyncEncryptionKey.parse(encryptionKey) }.isFailure) {
+        return "请生成恢复密钥，或输入其他设备使用的 43 位恢复密钥。"
     }
     return null
 }

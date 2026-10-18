@@ -12,6 +12,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.SocketPolicy
+import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,6 +26,8 @@ import java.util.concurrent.TimeUnit
 
 class SyncEngineTest {
     private lateinit var server: MockWebServer
+    private val keyText = SyncEncryptionKey.generate()
+    private val encryptionKey = SyncEncryptionKey.parse(keyText)
     private val base = Note(id = "base", title = "记事", revision = "v1", deviceId = "a", createdAt = 1, updatedAt = 1)
 
     @Before fun setUp() {
@@ -52,7 +55,7 @@ class SyncEngineTest {
         assertEquals("PUT", put.method)
         assertEquals("\"remote-etag\"", put.getHeader("If-Match"))
         assertNull(put.getHeader("If-None-Match"))
-        assertEquals(result.notes, SyncJson.decode(put.body.readByteArray()).notes)
+        assertEquals(result.notes, EncryptedSyncJson.decode(put.body.readByteArray(), encryptionKey).notes)
     }
 
     @Test
@@ -81,7 +84,7 @@ class SyncEngineTest {
         assertEquals("GET", request().method)
         val retry = request()
         assertEquals("\"etag-two\"", retry.getHeader("If-Match"))
-        assertEquals(result.notes, SyncJson.decode(retry.body.readByteArray()).notes)
+        assertEquals(result.notes, EncryptedSyncJson.decode(retry.body.readByteArray(), encryptionKey).notes)
     }
 
     @Test
@@ -123,9 +126,98 @@ class SyncEngineTest {
     }
 
     @Test
+    fun emptyFirstSyncCreatesEncryptedFileAndAnotherDeviceCanVerifyKey() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse().setResponseCode(201))
+        assertTrue(dav().sync(emptyList()).uploaded)
+        assertEquals("GET", request().method)
+        val put = request()
+        assertEquals("*", put.getHeader("If-None-Match"))
+        val wire = put.body.readByteArray()
+        assertEquals(emptyList<Note>(), EncryptedSyncJson.decode(wire, encryptionKey).notes)
+        server.enqueue(MockResponse().setHeader("ETag", "\"empty\"").setBody(Buffer().write(wire)))
+        val anotherDevice = SyncEngine(davConfig(), SyncEncryptionKey.parse(keyText))
+        assertTrue(anotherDevice.testConnection().remoteExists)
+        assertEquals("GET", request().method)
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun uploadContainsNeitherReadableNoteDataNorRecoveryKey() = runBlocking {
+        val privateNote = base.copy(
+            id = "private-note-identifier", title = "私密标题", content = "不可泄露的正文和提醒",
+            revision = "private-revision-identifier", deviceId = "private-device-identifier", reminderAt = 1234,
+        )
+        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse().setResponseCode(201))
+        dav().sync(listOf(privateNote))
+        request()
+        val wire = request().body.readByteArray()
+        val text = wire.toString(Charsets.UTF_8)
+        listOf(privateNote.id, privateNote.title, privateNote.content, privateNote.revision, privateNote.deviceId, keyText).forEach {
+            assertFalse(text.contains(it))
+        }
+        assertFalse(text.contains("\"notes\""))
+        assertEquals(listOf(privateNote), EncryptedSyncJson.decode(wire, SyncEncryptionKey.parse(keyText)).notes)
+    }
+
+    @Test
+    fun plaintextRemoteIsRejectedForReadOnlyTestAndSyncWithoutWriting() = runBlocking {
+        val plaintext = SyncJson.encode(SyncDocument(notes = listOf(base)))
+        repeat(2) { server.enqueue(MockResponse().setHeader("ETag", "\"legacy\"").setBody(plaintext)) }
+        assertTrue(expectFailure { dav().testConnection() } is SyncProtocolException)
+        assertTrue(expectFailure { dav().sync(listOf(base.copy(id = "local"))) } is SyncProtocolException)
+        assertEquals(2, server.requestCount)
+        repeat(2) { assertEquals("GET", request().method) }
+    }
+
+    @Test
+    fun wrongKeyAndTamperedCiphertextNeverReachPutOrMergeResults() = runBlocking {
+        val otherKey = SyncEncryptionKey.parse(SyncEncryptionKey.generate())
+        val encoded = EncryptedSyncJson.encode(SyncDocument(notes = listOf(base)), otherKey)
+        server.enqueue(MockResponse().setHeader("ETag", "\"wrong-key\"").setBody(Buffer().write(encoded)))
+        val wrongKeyError = expectFailure { dav().sync(listOf(base.copy(id = "local"))) }
+        assertTrue(wrongKeyError is SyncProtocolException)
+        assertFalse(wrongKeyError.isRetryable)
+        val valid = EncryptedSyncJson.encode(SyncDocument(notes = listOf(base)), encryptionKey).toString(Charsets.UTF_8)
+        val marker = "\"ciphertext\":\""
+        val offset = valid.indexOf(marker) + marker.length
+        assertTrue(offset >= marker.length)
+        val tampered = valid.replaceRange(offset, offset + 1, if (valid[offset] == 'A') "B" else "A")
+        server.enqueue(MockResponse().setHeader("ETag", "\"tampered\"").setBody(tampered))
+        assertTrue(expectFailure { dav().testConnection() } is SyncProtocolException)
+        assertEquals(2, server.requestCount)
+        repeat(2) { assertEquals("GET", request().method) }
+    }
+
+    @Test
+    fun plaintextSubstitutionDuringConditionalRetryIsRejected() = runBlocking {
+        server.enqueue(snapshot(listOf(base), "\"encrypted\""))
+        server.enqueue(MockResponse().setResponseCode(412))
+        server.enqueue(MockResponse().setHeader("ETag", "\"downgrade\"")
+            .setBody(SyncJson.encode(SyncDocument(notes = listOf(base)))))
+        assertTrue(expectFailure { dav().sync(listOf(base.copy(id = "local"))) } is SyncProtocolException)
+        assertEquals("GET", request().method)
+        val firstPut = request()
+        assertEquals("\"encrypted\"", firstPut.getHeader("If-Match"))
+        EncryptedSyncJson.decode(firstPut.body.readByteArray(), encryptionKey)
+        assertEquals("GET", request().method)
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun oversizedEncryptedResponseIsRejectedBeforeReadingOrWriting() = runBlocking {
+        server.enqueue(MockResponse().setHeader("ETag", "\"large\"")
+            .setBody("{}").setHeader("Content-Length", EncryptedSyncJson.MAX_DOCUMENT_BYTES.toLong() + 1))
+        assertTrue(expectFailure { dav().sync(listOf(base)) } is SyncProtocolException)
+        assertEquals(1, server.requestCount)
+        assertEquals("GET", request().method)
+    }
+
+    @Test
     fun missingOrWeakEtagsRefuseToOverwrite() = runBlocking {
         listOf<String?>(null, "W/\"weak\"", "unquoted").forEach { etag ->
-            val response = MockResponse().setBody(SyncJson.encode(SyncDocument(notes = listOf(base))))
+            val response = MockResponse().setBody(Buffer().write(EncryptedSyncJson.encode(SyncDocument(notes = listOf(base)), encryptionKey)))
             if (etag != null) response.setHeader("ETag", etag)
             server.enqueue(response)
             val error = expectFailure { dav().sync(listOf(base.copy(id = "local"))) }
@@ -161,7 +253,7 @@ class SyncEngineTest {
         other.start()
         try {
             server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", other.url("/capture")))
-            val engine = SyncEngine(davConfig(), OkHttpClient.Builder().followRedirects(true).build())
+            val engine = SyncEngine(davConfig(), encryptionKey, OkHttpClient.Builder().followRedirects(true).build())
             assertTrue(expectFailure { engine.testConnection() }.message.orEmpty().contains("重定向"))
             assertEquals(0, other.requestCount)
             assertEquals(1, server.requestCount)
@@ -178,7 +270,7 @@ class SyncEngineTest {
             endpoint = server.url("/").toString(), bucket = "notes-bucket", accessKeyId = "test-access",
             secretAccessKey = "test-secret", region = "auto", prefix = "笔记/ideas : +", sessionToken = "session-token",
         )
-        val result = SyncEngine(config).sync(listOf(base))
+        val result = SyncEngine(config, encryptionKey).sync(listOf(base))
         assertTrue(result.uploaded)
         val get = request()
         assertEquals("/notes-bucket/%E7%AC%94%E8%AE%B0/ideas%20%3A%20%2B/colormemo-v1.json", get.path)
@@ -190,7 +282,7 @@ class SyncEngineTest {
         val payload = put.body.readByteArray()
         val hash = MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) }
         assertEquals(hash, put.getHeader("x-amz-content-sha256"))
-        assertEquals(result.notes, SyncJson.decode(payload).notes)
+        assertEquals(result.notes, EncryptedSyncJson.decode(payload, encryptionKey).notes)
         assertFalse(config.toString().contains("test-secret"))
         assertFalse(davConfig().toString().contains("secret"))
     }
@@ -199,7 +291,7 @@ class SyncEngineTest {
     fun cancellationStopsTheInFlightHttpCall() = runBlocking {
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
         val client = OkHttpClient()
-        val operation = async { SyncEngine(davConfig(), client).testConnection() }
+        val operation = async { SyncEngine(davConfig(), encryptionKey, client).testConnection() }
         // Yield to async first; takeRequest itself is blocking.
         withTimeout(3_000) {
             while (server.requestCount == 0) delay(10)
@@ -214,22 +306,22 @@ class SyncEngineTest {
     @Test
     fun productionHttpAndEmbeddedUrlCredentialsAreRejected() {
         assertThrows(SyncConfigurationException::class.java) {
-            SyncEngine(RemoteConfig.WebDav("http://dav.example.com/notes/"))
+            SyncEngine(RemoteConfig.WebDav("http://dav.example.com/notes/"), encryptionKey)
         }
         assertThrows(SyncConfigurationException::class.java) {
-            SyncEngine(RemoteConfig.WebDav("https://user:password@dav.example.com/notes/"))
+            SyncEngine(RemoteConfig.WebDav("https://user:password@dav.example.com/notes/"), encryptionKey)
         }
         assertThrows(SyncConfigurationException::class.java) {
-            SyncEngine(RemoteConfig.WebDav("https://dav.example.com/notes/?token=secret"))
+            SyncEngine(RemoteConfig.WebDav("https://dav.example.com/notes/?token=secret"), encryptionKey)
         }
     }
 
     private fun davConfig() = RemoteConfig.WebDav(server.url("/dav/notes/").toString(), "alice", "secret")
-    private fun dav() = SyncEngine(davConfig())
+    private fun dav() = SyncEngine(davConfig(), encryptionKey)
 
     private fun snapshot(notes: List<Note>, etag: String) = MockResponse()
         .setResponseCode(200).setHeader("ETag", etag)
-        .setBody(SyncJson.encode(SyncDocument(notes = notes)))
+        .setBody(Buffer().write(EncryptedSyncJson.encode(SyncDocument(notes = notes), encryptionKey)))
 
     private fun request(): RecordedRequest = server.takeRequest(2, TimeUnit.SECONDS)
         ?: throw AssertionError("Expected HTTP request was not sent")

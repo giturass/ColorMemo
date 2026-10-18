@@ -1,5 +1,7 @@
 package dev.colormemo.core.model
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
@@ -9,6 +11,7 @@ enum class NoteColor {
 }
 
 /** A revision is immutable; every user mutation must call [edited]. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Note(
     val id: String = UUID.randomUUID().toString(),
@@ -28,6 +31,8 @@ data class Note(
     val ancestorRevisions: Set<String> = emptySet(),
     val conflictOf: String? = null,
     val conflictRevision: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val whiteboard: Whiteboard? = null,
 ) {
     /** Call after copy(...), using the revision of the note on which the edit was based. */
     fun edited(
@@ -41,6 +46,7 @@ data class Note(
         return copy(
             title = if (isPurged) "" else title,
             content = if (isPurged) "" else content,
+            whiteboard = if (isPurged) null else whiteboard,
             deletedAt = if (isPurged) deletedAt ?: editedAt else deletedAt,
             reminderAt = if (isPurged || deletedAt != null) null else reminderAt,
             updatedAt = editedAt,

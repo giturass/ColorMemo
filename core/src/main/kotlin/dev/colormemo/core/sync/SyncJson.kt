@@ -1,6 +1,7 @@
 package dev.colormemo.core.sync
 
 import dev.colormemo.core.model.Note
+import dev.colormemo.core.model.Whiteboard
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
@@ -122,15 +123,39 @@ object SyncJson {
             if (note.title.length > MAX_TITLE_CHARACTERS || note.content.length > MAX_CONTENT_CHARACTERS) {
                 throw SyncProtocolException("单条笔记过大，未覆盖任何数据。")
             }
+            note.whiteboard?.let(::validateWhiteboard)
             if (note.createdAt < 0 || note.updatedAt < 0 || note.updatedAt == Long.MAX_VALUE ||
                 note.deletedAt?.let { it < 0 } == true || note.reminderAt?.let { it < 0 } == true
             ) {
                 throw SyncProtocolException("笔记时间数据无效。")
             }
             if (note.isPurged && (note.deletedAt == null || note.title.isNotEmpty() ||
-                    note.content.isNotEmpty() || note.reminderAt != null)
+                    note.content.isNotEmpty() || note.reminderAt != null || note.whiteboard != null)
             ) {
                 throw SyncProtocolException("永久删除记录包含无效数据。")
+            }
+        }
+    }
+
+    private fun validateWhiteboard(whiteboard: Whiteboard) {
+        if (whiteboard.strokes.size > Whiteboard.MAX_STROKES ||
+            whiteboard.strokes.sumOf { it.points.size.toLong() } > Whiteboard.MAX_POINTS
+        ) {
+            throw SyncProtocolException("单张白板超过笔画或点数上限，未覆盖任何数据。")
+        }
+        for (stroke in whiteboard.strokes) {
+            if (stroke.color !in 0xFF000000L..0xFFFFFFFFL || !stroke.width.isFinite() ||
+                stroke.width !in Whiteboard.MIN_STROKE_WIDTH..Whiteboard.MAX_STROKE_WIDTH ||
+                stroke.points.isEmpty()
+            ) {
+                throw SyncProtocolException("白板笔画数据无效，未覆盖任何数据。")
+            }
+            if (stroke.points.any { point ->
+                    !point.x.isFinite() || !point.y.isFinite() ||
+                        point.x !in 0f..Whiteboard.CANVAS_SIZE || point.y !in 0f..Whiteboard.CANVAS_SIZE
+                }
+            ) {
+                throw SyncProtocolException("白板坐标数据无效，未覆盖任何数据。")
             }
         }
     }

@@ -67,6 +67,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,13 +86,21 @@ import dev.colormemo.app.ui.theme.containerColor
 import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteColor
+import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.sync.SyncJson
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
 
 private const val MAX_TITLE_LENGTH = 500
 private const val MAX_CONTENT_LENGTH = 100_000
+
+private val WhiteboardDraftSaver = Saver<Whiteboard?, String>(
+    save = { board -> board?.let { SyncJson.json.encodeToString(it) } ?: "" },
+    restore = { value -> value.takeIf(String::isNotEmpty)?.let { SyncJson.json.decodeFromString<Whiteboard>(it) } },
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,12 +109,16 @@ internal fun NoteEditorScreen(
     state: MemoUiState,
     callbacks: MemoCallbacks,
     onClose: () -> Unit,
+    newWhiteboard: Boolean = false,
 ) {
     // A save may commit just as rotation cancels its UI coroutine. Retrying must
     // address the same record instead of creating a second copy with a new ID.
     val newNoteId = rememberSaveable { UUID.randomUUID().toString() }
     var title by rememberSaveable { mutableStateOf(note?.title.orEmpty()) }
     var content by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(note?.content.orEmpty())) }
+    var whiteboard by rememberSaveable(stateSaver = WhiteboardDraftSaver) {
+        mutableStateOf(note?.whiteboard ?: if (newWhiteboard) Whiteboard() else null)
+    }
     var color by rememberSaveable { mutableStateOf(note?.color ?: NoteColor.DEFAULT) }
     var pinned by rememberSaveable { mutableStateOf(note?.isPinned ?: false) }
     var archived by rememberSaveable { mutableStateOf(note?.isArchived ?: false) }
@@ -125,11 +138,12 @@ internal fun NoteEditorScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val readOnly = note?.deletedAt != null
-    val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null)
+    val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null, whiteboard)
     val initialFingerprint = rememberSaveable { draft.fingerprint() }
-    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt) { draft.fingerprint() }
+    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard) { draft.fingerprint() }
     val dirty = fingerprint != initialFingerprint
-    val canSave = !saving && (title.isNotBlank() || content.text.isNotBlank()) &&
+    val canSave = !saving && (title.isNotBlank() || content.text.isNotBlank() ||
+        whiteboard?.strokes?.isNotEmpty() == true || (whiteboard != null && note != null)) &&
         title.length <= MAX_TITLE_LENGTH && content.text.length <= MAX_CONTENT_LENGTH
     val currentNote = state.notes.firstOrNull { it.id == note?.id }
     val remoteChanged = !state.loading && note != null && currentNote != null && currentNote.revision != note.revision
@@ -140,7 +154,11 @@ internal fun NoteEditorScreen(
         }
     }
     val save: () -> Unit = {
-        if (canSave) {
+        // The restored baseline omits the drawing and text to keep saved state small.
+        // Saving an unchanged draft must not manufacture a revision from that baseline.
+        if (!saving && note != null && !dirty) {
+            onClose()
+        } else if (canSave) {
             saving = true
             saveError = null
             scope.launch {
@@ -164,7 +182,17 @@ internal fun NoteEditorScreen(
         containerColor = color.containerColor(),
         topBar = {
             TopAppBar(
-                title = { Text(if (readOnly) "回收站便笺" else if (note == null) "新便笺" else "编辑便笺", style = MaterialTheme.typography.titleMedium) },
+                title = {
+                    Text(
+                        when {
+                            readOnly -> if (whiteboard != null) "回收站白板" else "回收站便笺"
+                            whiteboard != null -> if (note == null) "新白板" else "编辑白板"
+                            note == null -> "新便笺"
+                            else -> "编辑便笺"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                },
                 navigationIcon = { IconButton(onClick = close, enabled = !saving) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") } },
                 actions = {
                     if (!readOnly) {
@@ -196,7 +224,7 @@ internal fun NoteEditorScreen(
                             Text("卡片颜色 · ${color.displayName}", Modifier.padding(start = 20.dp, top = 12.dp), style = MaterialTheme.typography.labelMedium)
                             ColorPalette(color, onSelect = { if (!saving) color = it }, modifier = Modifier.fillMaxWidth())
                         }
-                        if (!preview) {
+                        if (!preview && whiteboard == null) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                                 MarkdownAction(Icons.Outlined.FormatBold, "加粗", saving) { content = content.insert("**", "**", "文字"); focusRequester.requestFocus() }
                                 MarkdownAction(Icons.Outlined.FormatItalic, "斜体", saving) { content = content.insert("*", "*", "文字"); focusRequester.requestFocus() }
@@ -216,14 +244,14 @@ internal fun NoteEditorScreen(
                             Box {
                                 IconButton(onClick = { menuOpen = true }, enabled = !saving) { Icon(Icons.Outlined.MoreVert, "更多操作") }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                    DropdownMenuItem(text = { Text("Markdown 帮助") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.HelpOutline, null) }, onClick = { menuOpen = false; showHelp = true })
+                                    DropdownMenuItem(text = { Text(if (whiteboard != null) "白板帮助" else "Markdown 帮助") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.HelpOutline, null) }, onClick = { menuOpen = false; showHelp = true })
                                     if (note != null) {
                                         DropdownMenuItem(text = { Text("移到回收站") }, leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) }, onClick = { menuOpen = false; showDeleteDialog = true })
                                     }
                                 }
                             }
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = {
+                            if (whiteboard == null) TextButton(onClick = {
                                 requestEditorFocus = preview
                                 preview = !preview
                             }, enabled = !saving) {
@@ -257,7 +285,33 @@ internal fun NoteEditorScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            if (preview || readOnly) {
+            if (whiteboard != null) {
+                if (readOnly) {
+                    if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 20.dp))
+                } else {
+                    BasicTextField(
+                        value = title,
+                        onValueChange = { if (it.length <= MAX_TITLE_LENGTH) title = it },
+                        enabled = !saving,
+                        textStyle = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        decorationBox = { field ->
+                            Box {
+                                if (title.isEmpty()) Text("白板标题（可选）", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f))
+                                field()
+                            }
+                        },
+                    )
+                }
+                WhiteboardEditor(
+                    whiteboard = whiteboard!!,
+                    onWhiteboardChange = { whiteboard = it },
+                    readOnly = readOnly || saving,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (content.text.isNotBlank()) MarkdownPreview(content.text)
+            } else if (preview || readOnly) {
                 if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 20.dp))
                 if (content.text.isBlank()) Text("还没有正文", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else MarkdownPreview(content.text)
@@ -279,7 +333,7 @@ internal fun NoteEditorScreen(
                 )
                 BasicTextField(
                     value = content,
-                    onValueChange = { if (it.text.length <= MAX_CONTENT_LENGTH) content = it },
+                    onValueChange = { if (it.text.length <= MAX_CONTENT_LENGTH) content = continueOrderedListAfterEnter(content, it) },
                     enabled = !saving,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -298,7 +352,7 @@ internal fun NoteEditorScreen(
             }
             // Scaffold subcomposes its content; request focus only after this field's composition.
             LaunchedEffect(preview) {
-                if (preview) {
+                if (preview || whiteboard != null) {
                     focusManager.clearFocus(force = true)
                     keyboardController?.hide()
                 } else if (requestEditorFocus && !readOnly) {
@@ -352,12 +406,16 @@ internal fun NoteEditorScreen(
     if (showHelp) {
         AlertDialog(
             onDismissRequest = { showHelp = false },
-            title = { Text("用 Markdown 记录") },
+            title = { Text(if (whiteboard != null) "在白板上记录" else "用 Markdown 记录") },
             text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("用底部工具栏插入格式，点击「预览」查看排版。")
-                    Text("# 一级标题\n## 二级标题\n**加粗文字**\n*斜体文字*\n- 列表项\n- [ ] 待办事项\n- [x] 已完成\n[链接文字](https://example.com)\n> 引用\n`行内代码`", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                    Text("也支持代码块、表格和删除线。", style = MaterialTheme.typography.bodySmall)
+                if (whiteboard != null) {
+                    Text("用手指或触控笔绘画，可选择笔迹颜色和粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n在画布外滑动可滚动页面，点击「保存」保留白板。")
+                } else {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("用底部工具栏插入格式，点击「预览」查看排版。")
+                        Text("# 一级标题\n## 二级标题\n**加粗文字**\n*斜体文字*\n- 列表项\n- [ ] 待办事项\n- [x] 已完成\n[链接文字](https://example.com)\n> 引用\n`行内代码`", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        Text("也支持代码块、表格和删除线。", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { showHelp = false }) { Text("知道了") } },
@@ -382,7 +440,8 @@ private fun EditorNotice(message: String, isError: Boolean = false) {
 }
 
 private fun NoteDraft.fingerprint(): String {
-    val text = listOf(title, content, color.name, isPinned.toString(), isArchived.toString(), reminderAt.toString())
+    val text = listOf(title, content, color.name, isPinned.toString(), isArchived.toString(), reminderAt.toString(),
+        whiteboard?.let { SyncJson.json.encodeToString(it) }.orEmpty())
         .joinToString("") { "${it.length}:$it" }
     return MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 }
@@ -396,4 +455,37 @@ private fun TextFieldValue.insert(prefix: String, suffix: String, placeholder: S
     val newText = text.replaceRange(start, end, insertion)
     if (newText.length > MAX_CONTENT_LENGTH) return this
     return TextFieldValue(newText, TextRange(start + leading.length + prefix.length, start + leading.length + prefix.length + selected.length))
+}
+
+internal fun continueOrderedListAfterEnter(previous: TextFieldValue, next: TextFieldValue): TextFieldValue {
+    if (next.text.length != previous.text.length + 1) return next
+
+    val insertionIndex = next.selection.min - 1
+    if (insertionIndex < 0 || insertionIndex > previous.text.length || next.text[insertionIndex] != '\n') return next
+    if (previous.text.substring(0, insertionIndex) != next.text.substring(0, insertionIndex) ||
+        previous.text.substring(insertionIndex) != next.text.substring(insertionIndex + 1)
+    ) {
+        return next
+    }
+
+    val lineStart = previous.text.lastIndexOf('\n', insertionIndex - 1).let {
+        if (it < 0) 0 else it + 1
+    }
+    val line = previous.text.substring(lineStart, insertionIndex)
+    val prefix = Regex("""^(\s*)(\d{1,9})([.)])(\s+)(.*)$""").find(line)?.groupValues ?: return next
+    val indent = prefix[1]
+    val number = prefix[2].toInt()
+    val delimiter = prefix[3]
+    val spacing = prefix[4]
+    val itemText = prefix[5]
+
+    if (itemText.isBlank()) {
+        val newText = next.text.replaceRange(lineStart, insertionIndex, "")
+        return TextFieldValue(newText, TextRange(lineStart))
+    }
+
+    val nextPrefix = "$indent${number + 1}$delimiter$spacing"
+    val newText = next.text.replaceRange(insertionIndex + 1, insertionIndex + 1, nextPrefix)
+    if (newText.length > MAX_CONTENT_LENGTH) return next
+    return TextFieldValue(newText, TextRange(insertionIndex + 1 + nextPrefix.length))
 }

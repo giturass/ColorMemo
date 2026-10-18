@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
@@ -135,6 +136,7 @@ internal fun NotesScreen(
     section: MemoSection,
     onOpenDrawer: () -> Unit,
     onOpenNote: (Note?) -> Unit,
+    onCreateWhiteboard: () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var searchActive by rememberSaveable { mutableStateOf(false) }
@@ -197,13 +199,24 @@ internal fun NotesScreen(
         },
         floatingActionButton = {
             if (section != MemoSection.TRASH) {
-                ExtendedFloatingActionButton(
-                    onClick = { onOpenNote(null) },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                    text = { Text("写一条", fontWeight = FontWeight.SemiBold) },
-                )
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (section == MemoSection.NOTES) {
+                        ExtendedFloatingActionButton(
+                            onClick = onCreateWhiteboard,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            icon = { Icon(Icons.Outlined.Draw, contentDescription = null) },
+                            text = { Text("白板") },
+                        )
+                    }
+                    ExtendedFloatingActionButton(
+                        onClick = { if (section == MemoSection.WHITEBOARDS) onCreateWhiteboard() else onOpenNote(null) },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                        text = { Text(if (section == MemoSection.WHITEBOARDS) "新建白板" else "写一条", fontWeight = FontWeight.SemiBold) },
+                    )
+                }
             }
         },
     ) { padding ->
@@ -216,6 +229,7 @@ internal fun NotesScreen(
                     )
                     val sectionDescription = when (section) {
                         MemoSection.NOTES -> null
+                        MemoSection.WHITEBOARDS -> "随手画下灵感，留住每一笔想法"
                         MemoSection.REMINDERS -> "把重要的事，交给一个准时的提醒"
                         MemoSection.ARCHIVE -> "收好记录，给眼前留白"
                         MemoSection.TRASH -> "移除的便笺会保留，直到你彻底删除"
@@ -314,7 +328,7 @@ internal fun NotesScreen(
                 else -> LazyVerticalStaggeredGrid(
                     columns = if (compactGrid) StaggeredGridCells.Adaptive(152.dp) else StaggeredGridCells.Fixed(1),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 104.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = if (section == MemoSection.NOTES) 176.dp else 104.dp),
                     verticalItemSpacing = 12.dp,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -404,13 +418,21 @@ private fun MemoCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
+            note.whiteboard?.let { board ->
+                WhiteboardPreview(board, Modifier.fillMaxWidth().padding(bottom = 12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Outlined.Draw, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("白板", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(Modifier.height(6.dp))
+            }
             if (note.title.isNotBlank()) {
                 Text(note.title, style = MaterialTheme.typography.titleMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
                 if (summary.isNotEmpty()) Spacer(Modifier.height(8.dp))
             }
             if (summary.isNotEmpty()) {
                 Text(summary, style = MaterialTheme.typography.bodyMedium, maxLines = 11, overflow = TextOverflow.Ellipsis)
-            } else if (note.title.isBlank()) {
+            } else if (note.title.isBlank() && note.whiteboard == null) {
                 Text("空白便笺", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             note.reminderAt?.let { reminder ->
@@ -491,6 +513,7 @@ private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onClearFilter: 
                 section == MemoSection.ARCHIVE -> "这里，留给值得收好的记录"
                 section == MemoSection.TRASH -> "回收站很清爽"
                 section == MemoSection.REMINDERS -> "给未来的自己捎个信"
+                section == MemoSection.WHITEBOARDS -> "给灵感一块白板"
                 else -> "从一个小小的想法开始"
             },
             style = MaterialTheme.typography.titleMedium,
@@ -502,6 +525,7 @@ private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onClearFilter: 
                 section == MemoSection.ARCHIVE -> "归档后的便笺会出现在这里，随时可以找回来。"
                 section == MemoSection.TRASH -> "删除的便笺会先放在这里。"
                 section == MemoSection.REMINDERS -> "在便笺中添加提醒，到时间便会通知你。"
+                section == MemoSection.WHITEBOARDS -> "点击「新建白板」，随手写画。\n保存后，随时回来继续。"
                 else -> "随手记下灵感、清单和日常。\n选一个颜色，让记录变得好找。"
             },
             modifier = Modifier.padding(top = 10.dp, bottom = 20.dp),
@@ -516,6 +540,7 @@ private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onClearFilter: 
 
 private fun Note.inSection(section: MemoSection): Boolean = !isPurged && when (section) {
     MemoSection.NOTES -> deletedAt == null && !isArchived
+    MemoSection.WHITEBOARDS -> deletedAt == null && !isArchived && whiteboard != null
     MemoSection.REMINDERS -> deletedAt == null && reminderAt != null
     MemoSection.ARCHIVE -> deletedAt == null && isArchived
     MemoSection.TRASH -> deletedAt != null
@@ -524,6 +549,7 @@ private fun Note.inSection(section: MemoSection): Boolean = !isPurged && when (s
 private val MemoSection.icon: ImageVector
     get() = when (this) {
         MemoSection.NOTES -> Icons.AutoMirrored.Outlined.Notes
+        MemoSection.WHITEBOARDS -> Icons.Outlined.Draw
         MemoSection.REMINDERS -> Icons.Outlined.NotificationsNone
         MemoSection.ARCHIVE -> Icons.Outlined.Archive
         MemoSection.TRASH -> Icons.Outlined.DeleteOutline

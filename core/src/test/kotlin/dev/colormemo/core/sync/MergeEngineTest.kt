@@ -2,6 +2,9 @@ package dev.colormemo.core.sync
 
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteColor
+import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardPoint
+import dev.colormemo.core.model.WhiteboardStroke
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -122,6 +125,43 @@ class MergeEngineTest {
         assertEquals(1, result.notes.size)
         assertEquals(0, result.conflictCount)
         assertTrue("a" in result.notes.single().ancestorRevisions)
+    }
+
+    @Test
+    fun divergentDrawingsSurviveSyncAndRepeatedMerges() {
+        val original = base.copy(whiteboard = Whiteboard())
+        val aDrawing = Whiteboard(listOf(WhiteboardStroke(points = listOf(WhiteboardPoint(10f, 20f)))))
+        val bDrawing = Whiteboard(listOf(WhiteboardStroke(points = listOf(WhiteboardPoint(30f, 40f)))))
+        val left = original.copy(whiteboard = aDrawing).edited("a", 200, "left")
+        val right = original.copy(whiteboard = bDrawing).edited("b", 300, "right")
+        val merged = MergeEngine.merge(listOf(left), listOf(right))
+        assertEquals(1, merged.conflictCount)
+        assertEquals(setOf(aDrawing, bDrawing), merged.notes.map { it.whiteboard }.toSet())
+        assertEquals(merged, MergeEngine.merge(listOf(right), listOf(left)))
+        val restored = SyncJson.decode(SyncJson.encode(SyncDocument(notes = merged.notes))).notes
+        assertEquals(merged.notes, restored)
+        assertEquals(merged.notes, MergeEngine.merge(restored, listOf(left)).notes)
+        assertEquals(0, MergeEngine.merge(restored, listOf(left)).conflictCount)
+    }
+
+    @Test
+    fun identicalConcurrentDrawingsDoNotCreateConflictCopies() {
+        val drawing = Whiteboard(listOf(WhiteboardStroke(points = listOf(WhiteboardPoint(10f, 20f)))))
+        val left = base.copy(whiteboard = drawing).edited("a", 200, "left")
+        val right = base.copy(whiteboard = drawing).edited("b", 300, "right")
+        val result = MergeEngine.merge(listOf(left), listOf(right))
+        assertEquals(1, result.notes.size)
+        assertEquals(0, result.conflictCount)
+        assertEquals(drawing, result.notes.single().whiteboard)
+    }
+
+    @Test
+    fun clearedWhiteboardRemainsDistinctFromConcurrentTextNote() {
+        val drawing = base.copy(whiteboard = Whiteboard()).edited("a", 200, "drawing")
+        val text = base.edited("b", 300, "text")
+        val result = MergeEngine.merge(listOf(drawing), listOf(text))
+        assertEquals(1, result.conflictCount)
+        assertEquals(setOf(null, Whiteboard()), result.notes.map { it.whiteboard }.toSet())
     }
 
     @Test

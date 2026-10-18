@@ -2,6 +2,7 @@ package dev.colormemo.app.ui
 
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteColor
+import dev.colormemo.core.model.Whiteboard
 
 /** State supplied by the application; screen navigation and drafts stay in the UI. */
 data class MemoUiState(
@@ -26,6 +27,7 @@ data class NoteDraft(
     val isArchived: Boolean = false,
     val reminderAt: Long? = null,
     val newNoteId: String? = null,
+    val whiteboard: Whiteboard? = null,
 ) {
     val id: String? get() = baseNote?.id ?: newNoteId
 }
@@ -60,7 +62,12 @@ data class SyncSettingsUi(
     val automaticSync: Boolean = true,
     val syncInterval: SyncIntervalUi = SyncIntervalUi.FIFTEEN_MINUTES,
     val wifiOnly: Boolean = false,
-)
+    val encryptionKey: String = "",
+) {
+    override fun toString(): String = "SyncSettingsUi(enabled=$enabled, provider=$provider, " +
+        "automaticSync=$automaticSync, syncInterval=$syncInterval, wifiOnly=$wifiOnly, " +
+        "credentials=[REDACTED], encryptionKey=[REDACTED])"
+}
 
 data class MemoCallbacks(
     /** Return true only after the local transaction succeeds; false retains the editor. */

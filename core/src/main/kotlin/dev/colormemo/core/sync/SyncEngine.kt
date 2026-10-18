@@ -33,6 +33,7 @@ data class ConnectionTestResult(val noteCount: Int, val remoteExists: Boolean)
  */
 class SyncEngine(
     private val config: RemoteConfig,
+    private val encryptionKey: SyncEncryptionKey,
     client: OkHttpClient = defaultClient(),
 ) {
     private val client = client.newBuilder()
@@ -62,12 +63,12 @@ class SyncEngine(
             val merged = MergeEngine.merge(accumulated, remote.document.notes)
             accumulated = merged.notes
             conflictCount += merged.conflictCount
-            if ((!remote.exists && accumulated.isEmpty()) ||
-                (remote.exists && accumulated == remote.document.notes.sortedBy { it.id })
-            ) {
+            if (remote.exists && accumulated == remote.document.notes.sortedBy { it.id }) {
                 return@withContext SyncResult(accumulated, conflictCount, uploaded = false)
             }
-            val bytes = SyncJson.encode(SyncDocument(notes = accumulated)).toByteArray(Charsets.UTF_8)
+            // Authenticate the full snapshot, including revisions, deletion markers and whiteboards.
+            // Even an empty first sync creates an encrypted object to establish the shared key.
+            val bytes = EncryptedSyncJson.encode(SyncDocument(notes = accumulated), encryptionKey)
             val builder = baseRequest().header("Content-Type", JSON_MEDIA_TYPE.toString())
                 .put(bytes.toRequestBody(JSON_MEDIA_TYPE))
             if (remote.exists) builder.header("If-Match", requireNotNull(remote.etag))
@@ -93,7 +94,8 @@ class SyncEngine(
         if (etag == null || !STRONG_ETAG.matches(etag)) {
             throw SyncProtocolException("服务器未返回有效的强 ETag，无法安全同步；请启用 ETag 和条件写入。")
         }
-        return RemoteSnapshot(SyncJson.decode(response.body), etag, exists = true)
+        // There is deliberately no plaintext fallback, including for legacy v1 sync files.
+        return RemoteSnapshot(EncryptedSyncJson.decode(response.body, encryptionKey), etag, exists = true)
     }
 
     private fun baseRequest(): Request.Builder = Request.Builder()
@@ -153,8 +155,8 @@ class SyncEngine(
 
     private fun readLimited(body: ResponseBody?): ByteArray {
         if (body == null) throw SyncProtocolException("服务器返回了空的同步响应。")
-        if (body.contentLength() > SyncJson.MAX_DOCUMENT_BYTES) {
-            throw SyncProtocolException("远端笔记数据超过 16 MiB，未覆盖任何数据。")
+        if (body.contentLength() > EncryptedSyncJson.MAX_DOCUMENT_BYTES) {
+            throw SyncProtocolException("远端加密文件超过大小上限，未覆盖任何数据。")
         }
         val output = ByteArrayOutputStream()
         body.byteStream().use { input ->
@@ -162,8 +164,8 @@ class SyncEngine(
             while (true) {
                 val count = input.read(buffer)
                 if (count == -1) break
-                if (output.size().toLong() + count > SyncJson.MAX_DOCUMENT_BYTES) {
-                    throw SyncProtocolException("远端笔记数据超过 16 MiB，未覆盖任何数据。")
+                if (output.size().toLong() + count > EncryptedSyncJson.MAX_DOCUMENT_BYTES) {
+                    throw SyncProtocolException("远端加密文件超过大小上限，未覆盖任何数据。")
                 }
                 output.write(buffer, 0, count)
             }
@@ -175,6 +177,7 @@ class SyncEngine(
     private data class RemoteSnapshot(val document: SyncDocument, val etag: String?, val exists: Boolean)
 
     companion object {
+        // Retain the object location so both new and old clients reject incompatible formats.
         const val FILE_NAME: String = "colormemo-v1.json"
         private const val MAX_WRITE_ATTEMPTS = 4
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()

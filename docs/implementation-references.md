@@ -7,11 +7,17 @@
 - [Room 事务](https://developer.android.com/reference/androidx/room/RoomDatabase#runInTransaction(java.lang.Runnable))：本地与同步写入在事务内合并。
 - [WorkManager 请求](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work)：周期任务最短 15 分钟、约束与指数退避。
 - [唯一任务链](https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/manage-work)：编辑后的同步使用 APPEND_OR_REPLACE，避免正在执行的任务遗漏后续修改。
-- [Android Keystore](https://developer.android.com/privacy-and-security/keystore)：设备生成并保护 AES 密钥。
+- [Android Keystore](https://developer.android.com/privacy-and-security/keystore)（加密扩展于 2026-10-18 复核）：设备生成并保护用于本机配置加密的 AES 密钥；跨设备恢复密钥随配置加密保存，不将设备 Keystore 密钥导出共享。
+- [Android 密码学建议](https://developer.android.com/privacy-and-security/cryptography)（2026-10-18）：AES/GCM/NoPadding 与 256 位密钥、平台默认密码学提供方。
+- [敏感剪贴板内容](https://developer.android.com/develop/ui/views/touch-and-input/copy-paste#SensitiveContent)（2026-10-18）：复制恢复密钥时设置 `ClipDescription.EXTRA_IS_SENSITIVE`，避免系统在剪贴板预览中显示密钥。
+- [Java 17 Cipher](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/javax/crypto/Cipher.html) 与 [GCMParameterSpec](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/javax/crypto/spec/GCMParameterSpec.html)（2026-10-18）：GCM 同一密钥下 IV 不重复，先传入 AAD，再加密或认证解密；认证标签按位设置为 128。
+- [RFC 5116](https://www.rfc-editor.org/rfc/rfc5116.html) 与 [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648.html)（2026-10-18）：AEAD_AES_256_GCM 的密钥、nonce 和标签长度，AEAD 不提供防重放；密钥与信封采用各自固定的规范 Base64 编码。
 - [Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files)：系统选择导入和导出目标，无需广泛文件权限。
 - [AGP 8.9 兼容性](https://developer.android.com/build/releases/past-releases/agp-8-9-0-release-notes)：API 35、Gradle 8.11.1、JDK 17。
 - [Compose 日期选择器](https://developer.android.com/develop/ui/compose/components/datepickers) 与 [时间选择器](https://developer.android.com/develop/ui/compose/components/time-pickers)：选择本地日期和时间，保存为 epoch 毫秒。
 - [Markwon 核心 API](https://noties.io/Markwon/docs/v4/core/getting-started.html)：TextView 渲染 Markdown，不启用网络图片插件。
 - [Android 自适应图标](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive)：前景、背景和 monochrome 图层；Android 13 起支持主题图标。
+- [Compose 手势处理](https://developer.android.com/develop/ui/compose/touch-input/pointer-input/understand-gestures)（2026-10-18）：`awaitEachGesture` / `awaitFirstDown` 处理连续笔画，事件传播顺序及 `consume()` 避免绘画手势同时滚动编辑页。
+- [SVG 2 笔画绘制](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty)（2026-10-18）：圆帽、圆角与单点笔画的表现；白板导出使用固定方形坐标，单点显式绘制为圆形。文件仍通过上述 Storage Access Framework 写入用户选择的 ZIP，不新增存储权限。
 
 WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹钟及通知权限的参考链接见 [提醒说明](reminders.md)。

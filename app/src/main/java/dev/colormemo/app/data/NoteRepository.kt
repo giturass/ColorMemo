@@ -34,7 +34,9 @@ class NoteRepository(
     suspend fun save(draft: NoteDraft): Note = withContext(Dispatchers.IO) {
         checkInput(draft.title.length <= 500, "标题最多 500 个字符")
         checkInput(draft.content.length <= 100_000, "单条笔记最多 100,000 个字符")
-        checkInput(draft.title.isNotBlank() || draft.content.isNotBlank(), "先写下一点内容再保存")
+        checkInput(draft.title.isNotBlank() || draft.content.isNotBlank() ||
+            draft.whiteboard?.strokes?.isNotEmpty() == true || (draft.whiteboard != null && draft.baseNote != null),
+            "先写下或画下一点内容再保存")
         val now = System.currentTimeMillis()
         // An unchanged reminder may already be in the past. A newly chosen one must be future.
         checkInput(draft.reminderAt == null || draft.reminderAt == draft.baseNote?.reminderAt || draft.reminderAt > now,
@@ -53,6 +55,7 @@ class NoteRepository(
                 isPinned = draft.isPinned,
                 isArchived = draft.isArchived,
                 reminderAt = draft.reminderAt,
+                whiteboard = draft.whiteboard,
             )
             if (draft.baseNote != null && candidate == base) return@withLock base
             val changed = candidate.edited(deviceId, now)
@@ -78,6 +81,7 @@ class NoteRepository(
         it.copy(
             title = "",
             content = "",
+            whiteboard = null,
             color = NoteColor.DEFAULT,
             isPinned = false,
             isArchived = false,

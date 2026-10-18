@@ -4,6 +4,7 @@ import dev.colormemo.app.data.NoteRepository
 import dev.colormemo.app.data.SecureSettingsStore
 import dev.colormemo.app.data.SyncPreferences
 import dev.colormemo.core.sync.SyncEngine
+import dev.colormemo.core.sync.SyncEncryptionKey
 import dev.colormemo.core.sync.SyncException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,16 +34,17 @@ class SyncCoordinator(private val repository: NoteRepository, private val settin
         mutableStatus.value = SyncStatus(
             description = when {
                 !settings.settings.value.enabled -> "仅保存在本机"
+                settings.settings.value.encryptionKey.isBlank() -> "请设置端到端加密恢复密钥"
                 time == 0L -> "尚未同步"
-                else -> "上次同步 ${formatTime(time)}"
+                else -> "上次加密同步 ${formatTime(time)}"
             },
             lastSuccessAt = time,
         )
     }
 
     suspend fun saveSettings(value: SyncPreferences) = mutex.withLock {
-        // Constructing an enabled endpoint validates the URL and required fields before saving.
-        if (value.enabled) SyncEngine(value.remoteConfig())
+        // Validate both the endpoint and recovery key before enabling background synchronization.
+        if (value.enabled) engine(value)
         val previous = settings.settings.value
         settings.save(value)
         if (previous.copy(enabled = value.enabled, automaticSync = value.automaticSync, wifiOnly = value.wifiOnly) != value) {
@@ -54,9 +56,9 @@ class SyncCoordinator(private val repository: NoteRepository, private val settin
     suspend fun test(value: SyncPreferences): String = mutex.withLock {
         mutableStatus.value = mutableStatus.value.copy(running = true, description = "正在检查连接…")
         try {
-            val result = SyncEngine(value.remoteConfig()).testConnection()
-            if (result.remoteExists) "连接成功，远端有 ${result.noteCount} 条记录（尚未验证写入权限）"
-            else "服务可访问，尚无同步文件；首次同步将检查写入权限"
+            val result = engine(value).testConnection()
+            if (result.remoteExists) "连接及解密成功，远端有 ${result.noteCount} 条记录（尚未验证写入权限）"
+            else "服务可访问，尚无同步文件；首次同步将创建加密文件并检查写入权限"
         } finally {
             refreshStatus()
         }
@@ -71,7 +73,7 @@ class SyncCoordinator(private val repository: NoteRepository, private val settin
         }
         mutableStatus.value = mutableStatus.value.copy(running = true, description = "正在同步…")
         try {
-            val engine = SyncEngine(config.remoteConfig())
+            val engine = engine(config)
             var conflicts = 0
             repeat(3) {
                 val result = engine.sync(repository.snapshot())
@@ -81,7 +83,7 @@ class SyncCoordinator(private val repository: NoteRepository, private val settin
                     val now = System.currentTimeMillis()
                     settings.recordSync(now)
                     mutableStatus.value = SyncStatus(
-                        description = if (conflicts > 0) "同步完成，已保留冲突副本" else "已同步 · ${formatTime(now)}",
+                        description = if (conflicts > 0) "加密同步完成，已保留冲突副本" else "已加密同步 · ${formatTime(now)}",
                         lastSuccessAt = now,
                     )
                     return@withLock true
@@ -97,6 +99,11 @@ class SyncCoordinator(private val repository: NoteRepository, private val settin
             throw error
         }
     }
+
+    private fun engine(value: SyncPreferences) = SyncEngine(
+        config = value.remoteConfig(),
+        encryptionKey = SyncEncryptionKey.parse(value.encryptionKey),
+    )
 
     companion object {
         fun userMessage(error: Throwable): String = when (error) {
