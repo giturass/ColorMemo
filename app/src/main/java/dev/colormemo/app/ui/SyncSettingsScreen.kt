@@ -126,7 +126,7 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
             SettingsCard {
                 SettingsToggle(
                     title = "启用云同步",
-                    description = "在设备之间同步便笺、颜色和提醒",
+                    description = "在设备之间同步便签、颜色和提醒",
                     checked = draft.enabled,
                     onCheckedChange = { draft = draft.copy(enabled = it); validationError = null },
                 )
@@ -191,7 +191,7 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                     HorizontalDivider()
                     Text("端到端加密", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "所有同步便笺（包括白板、颜色和提醒）都会在本机加密后上传。每台设备必须使用同一恢复密钥。",
+                        "所有同步便签（包括白板、颜色和提醒）都会在本机加密后上传。每台设备必须使用同一恢复密钥。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -229,7 +229,7 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                         Text("恢复密钥已复制", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
                     Text(
-                        "首次设置时生成密钥；连接已有加密数据时，请输入原密钥。新密钥无法解密原有数据。请在应用外安全保存密钥，丢失后无法恢复云端便笺。",
+                        "首次设置时生成密钥；连接已有加密数据时，请输入原密钥。新密钥无法解密原有数据。请在应用外安全保存密钥，丢失后无法恢复云端便签。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -248,7 +248,7 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                         }
                     }
                     Text(
-                        "保存设置后，下一次成功同步才会将便笺以密文上传。本机数据库和手动导出的备份仍是明文。旧版明文云端数据不受支持，请使用新的空目录或对象前缀。",
+                        "保存设置后，下一次成功同步才会将便签以密文上传。本机数据库和手动导出的备份仍是明文。旧版明文云端数据不受支持，请使用新的空目录或对象前缀。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

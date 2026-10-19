@@ -71,7 +71,7 @@ internal fun ReminderPickerDialog(
         title = { Text("提醒我") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("给这条便笺选一个时间。", style = MaterialTheme.typography.bodyMedium)
+                Text("给这条便签选一个时间。", style = MaterialTheme.typography.bodyMedium)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = {
                         val later = ZonedDateTime.now().plusHours(2)

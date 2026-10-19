@@ -221,13 +221,13 @@ internal fun NotesScreen(
                             else { selectedNotes.forEach { callbacks.onTrash(it.id) }; selectedIds = emptyList() }
                         }) {
                             Icon(if (section == MemoSection.TRASH) Icons.Outlined.DeleteForever else Icons.Outlined.DeleteOutline,
-                                if (section == MemoSection.TRASH) "彻底删除所选便笺" else "将所选便笺移到回收站")
+                                if (section == MemoSection.TRASH) "彻底删除所选便签" else "将所选便签移到回收站")
                         }
                         Box {
-                            IconButton(onClick = { selectionMenu = true }) { Icon(Icons.Outlined.MoreVert, "所选便笺操作") }
+                            IconButton(onClick = { selectionMenu = true }) { Icon(Icons.Outlined.MoreVert, "所选便签操作") }
                             DropdownMenu(expanded = selectionMenu, onDismissRequest = { selectionMenu = false }) {
                                 if (section == MemoSection.TRASH) {
-                                    DropdownMenuItem(text = { Text("恢复所选便笺") }, leadingIcon = { Icon(Icons.Outlined.RestoreFromTrash, null) }, onClick = {
+                                    DropdownMenuItem(text = { Text("恢复所选便签") }, leadingIcon = { Icon(Icons.Outlined.RestoreFromTrash, null) }, onClick = {
                                         selectedNotes.forEach { callbacks.onRestore(it.id) }; selectedIds = emptyList(); selectionMenu = false
                                     })
                                 } else {
@@ -287,7 +287,7 @@ internal fun NotesScreen(
                         MemoSection.WHITEBOARDS -> "随手画下灵感，留住每一笔想法"
                         MemoSection.REMINDERS -> "把重要的事，交给一个准时的提醒"
                         MemoSection.ARCHIVE -> "收好记录，给眼前留白"
-                        MemoSection.TRASH -> "移除的便笺会保留，直到你彻底删除"
+                        MemoSection.TRASH -> "移除的便签会保留，直到你彻底删除"
                     }
                     sectionDescription?.let { description ->
                         Text(
@@ -395,7 +395,7 @@ internal fun NotesScreen(
                     }
                     if (others.isNotEmpty() || section == MemoSection.REMINDERS) {
                         if (pinned.isNotEmpty() && section != MemoSection.REMINDERS) {
-                            item(key = "others-header", span = StaggeredGridItemSpan.FullLine) { NoteGroupLabel("其他便笺") }
+                            item(key = "others-header", span = StaggeredGridItemSpan.FullLine) { NoteGroupLabel(if (section == MemoSection.WHITEBOARDS) "其他白板" else "其他便签") }
                         }
                         items(if (section == MemoSection.REMINDERS) visible else others, key = { "note:${it.id}" }) { note ->
                             MemoCard(note, selecting, note.id in selectedIds, onClick = { onCardClick(note) }, onLongClick = { toggleSelection(note) }, onTrash = { callbacks.onTrash(note.id) })
@@ -408,7 +408,7 @@ internal fun NotesScreen(
     if (deleteTargets.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { deleteTargets = emptyList() },
-            title = { Text("彻底删除这 ${deleteTargets.size} 条便笺？") },
+            title = { Text("彻底删除这 ${deleteTargets.size} 条便签？") },
             text = { Text("内容将从本机移除，并在下一次同步时从其他设备移除。此操作无法恢复。") },
             confirmButton = {
                 TextButton(onClick = { deleteTargets.forEach { callbacks.onDeleteForever(it.id) }; deleteTargets = emptyList(); selectedIds = emptyList() }) {
@@ -495,7 +495,7 @@ private fun MemoCard(
             border = BorderStroke(if (isSelected) 2.dp else 1.dp,
                 if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "选择便笺")
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "选择便签")
                 .semantics {
                     selected = isSelected
                     if (canSwipe) customActions = listOf(CustomAccessibilityAction("移到回收站") { onTrash(); true })
@@ -525,7 +525,7 @@ private fun MemoCard(
                 if (summary.isNotEmpty()) {
                     Text(summary, style = MaterialTheme.typography.bodyMedium, maxLines = 11, overflow = TextOverflow.Ellipsis)
                 } else if (note.title.isBlank() && note.whiteboard == null) {
-                    Text(note.attachments.firstOrNull()?.fileName ?: "空白便笺", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(note.attachments.firstOrNull()?.fileName ?: "空白便签", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 note.reminderAt?.let { reminder ->
                     Surface(
@@ -565,7 +565,7 @@ private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onClearFilter: 
         Spacer(Modifier.height(24.dp))
         Text(
             when {
-                hasFilter -> "还没有找到这条便笺"
+                hasFilter -> "还没有找到这条便签"
                 section == MemoSection.ARCHIVE -> "这里，留给值得收好的记录"
                 section == MemoSection.TRASH -> "回收站很清爽"
                 section == MemoSection.REMINDERS -> "给未来的自己捎个信"
@@ -578,9 +578,9 @@ private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onClearFilter: 
         Text(
             when {
                 hasFilter -> "试试另一个关键词，或清除筛选条件。"
-                section == MemoSection.ARCHIVE -> "归档后的便笺会出现在这里，随时可以找回来。"
-                section == MemoSection.TRASH -> "删除的便笺会先放在这里。"
-                section == MemoSection.REMINDERS -> "在便笺中添加提醒，到时间便会通知你。"
+                section == MemoSection.ARCHIVE -> "归档后的便签会出现在这里，随时可以找回来。"
+                section == MemoSection.TRASH -> "删除的便签会先放在这里。"
+                section == MemoSection.REMINDERS -> "在便签中添加提醒，到时间便会通知你。"
                 section == MemoSection.WHITEBOARDS -> "点击「新建白板」，随手写画。\n保存后，随时回来继续。"
                 else -> "随手记下灵感、清单和日常。\n选一个颜色，让记录变得好找。"
             },
@@ -594,8 +594,8 @@ private fun EmptyNotes(section: MemoSection, hasFilter: Boolean, onClearFilter: 
     }
 }
 
-private fun Note.inSection(section: MemoSection): Boolean = !isPurged && when (section) {
-    MemoSection.NOTES -> deletedAt == null && !isArchived
+internal fun Note.inSection(section: MemoSection): Boolean = !isPurged && when (section) {
+    MemoSection.NOTES -> deletedAt == null && !isArchived && whiteboard == null
     MemoSection.WHITEBOARDS -> deletedAt == null && !isArchived && whiteboard != null
     MemoSection.REMINDERS -> deletedAt == null && reminderAt != null
     MemoSection.ARCHIVE -> deletedAt == null && isArchived

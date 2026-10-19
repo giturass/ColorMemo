@@ -249,10 +249,10 @@ internal fun NoteEditorScreen(
                 title = {
                     Text(
                         when {
-                            readOnly -> if (whiteboard != null) "回收站白板" else "回收站便笺"
+                            readOnly -> if (whiteboard != null) "回收站白板" else "回收站便签"
                             whiteboard != null -> title.ifBlank { if (note == null) "新白板" else "编辑白板" }
-                            note == null -> "新便笺"
-                            else -> "编辑便笺"
+                            note == null -> "新便签"
+                            else -> "编辑便签"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
@@ -293,7 +293,7 @@ internal fun NoteEditorScreen(
                                     if (whiteboard != null) DropdownMenuItem(text = { Text("标题与说明") }, onClick = { menuOpen = false; showWhiteboardDetails = true })
                                 }
                             }
-                            TextButton(onClick = { callbacks.onRestore(note.id); onClose() }, modifier = Modifier.align(Alignment.CenterEnd)) { Text("恢复便笺") }
+                            TextButton(onClick = { callbacks.onRestore(note.id); onClose() }, modifier = Modifier.align(Alignment.CenterEnd)) { Text("恢复便签") }
                         }
                     } else {
                         if (showPalette) {
@@ -360,10 +360,10 @@ internal fun NoteEditorScreen(
             ),
         ) {
             if (remoteChanged && !readOnly) {
-                EditorNotice("其他设备已修改这条便笺。保存时会保留两份修改。")
+                EditorNotice("其他设备已修改这条便签。保存时会保留两份修改。")
             }
             saveError?.let { EditorNotice(it, isError = true) }
-            if (readOnly) EditorNotice("这条便笺在回收站中，恢复后即可编辑。")
+            if (readOnly) EditorNotice("这条便签在回收站中，恢复后即可编辑。")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (archived) AssistChip(onClick = { if (!readOnly && !saving) archived = false }, label = { Text("已归档") }, leadingIcon = { Icon(Icons.Outlined.Archive, null, Modifier.size(16.dp)) })
                 reminderAt?.let { time ->
@@ -485,7 +485,7 @@ internal fun NoteEditorScreen(
         AlertDialog(
             onDismissRequest = { showLeaveDialog = false },
             title = { Text("保存这次修改？") },
-            text = { Text("保存后，便笺会留在本机，并按你的同步设置同步。") },
+            text = { Text("保存后，便签会留在本机，并按你的同步设置同步。") },
             confirmButton = { TextButton(onClick = { showLeaveDialog = false; save() }, enabled = canSave) { Text("保存") } },
             dismissButton = {
                 Row {
@@ -498,8 +498,8 @@ internal fun NoteEditorScreen(
     if (showDeleteDialog && note != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text(if (readOnly) "彻底删除这条便笺？" else "移到回收站？") },
-            text = { Text(if (readOnly) "内容将被移除，此操作无法恢复。删除也会同步到其他设备。" else if (dirty) "未保存的修改会丢弃，原便笺会移到回收站。" else "之后可以在回收站中恢复这条便笺。") },
+            title = { Text(if (readOnly) "彻底删除这条便签？" else "移到回收站？") },
+            text = { Text(if (readOnly) "内容将被移除，此操作无法恢复。删除也会同步到其他设备。" else if (dirty) "未保存的修改会丢弃，原便签会移到回收站。" else "之后可以在回收站中恢复这条便签。") },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteDialog = false

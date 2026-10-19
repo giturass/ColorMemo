@@ -32,7 +32,7 @@ import kotlinx.serialization.json.Json
 private enum class MemoScreen { NOTES, EDITOR, SETTINGS }
 
 internal enum class MemoSection(val label: String) {
-    NOTES("便笺"), WHITEBOARDS("白板"), REMINDERS("提醒"), ARCHIVE("归档"), TRASH("回收站")
+    NOTES("便签"), WHITEBOARDS("白板"), REMINDERS("提醒"), ARCHIVE("归档"), TRASH("回收站")
 }
 
 private val SnapshotJson = Json { ignoreUnknownKeys = true }
@@ -77,7 +77,7 @@ fun ColorMemoApp(
             val note = state.notes.firstOrNull { it.id == requestedId && !it.isPurged && it.deletedAt == null }
             if (note != null) openNote(note)
             callbacks.onConsumeRequestedNote()
-            if (note == null) snackbarHostState.showSnackbar("这条便笺已被移除")
+            if (note == null) snackbarHostState.showSnackbar("这条便签已被移除")
         } else if (requestedId != null && screen == MemoScreen.EDITOR && editingNote?.id == requestedId) {
             callbacks.onConsumeRequestedNote()
         }
