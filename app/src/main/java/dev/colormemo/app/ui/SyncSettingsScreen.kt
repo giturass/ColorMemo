@@ -99,13 +99,17 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
     val validRecoveryKey = remember(draft.encryptionKey) {
         runCatching { SyncEncryptionKey.parse(draft.encryptionKey.trim()) }.isSuccess
     }
-    val needsRecoveryConfirmation = draft.enabled &&
-        (!state.syncSettings.enabled || state.syncSettings.encryptionKey.isBlank() ||
-            draft.encryptionKey.trim() != state.syncSettings.encryptionKey.trim())
+    // Use the saved key, so toggling sync or reopening settings cannot restart setup.
+    val isRecoveryKeySetup = remember(state.syncSettings.encryptionKey) {
+        runCatching { SyncEncryptionKey.parse(state.syncSettings.encryptionKey.trim()) }.isFailure
+    }
+    val needsRecoveryConfirmation = draft.enabled && isRecoveryKeySetup
     val recoveryConfirmed = !needsRecoveryConfirmation || recoveryKeySaved
     val dirty = draft != state.syncSettings
     val close: () -> Unit = { if (dirty) confirmDiscard = true else onBack() }
     val save: () -> Unit = {
+        // Disabling sync must not save an unconfirmed key and finish first-time setup.
+        if (!draft.enabled) draft = draft.copy(encryptionKey = state.syncSettings.encryptionKey)
         val candidate = draft.normalized()
         validationError = if (candidate.enabled) candidate.validationError() else null
         if (validationError == null && recoveryConfirmed) callbacks.onSaveSyncSettings(candidate)
@@ -208,69 +212,69 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    SecretField(
-                        value = draft.encryptionKey,
-                        onValueChange = { draft = draft.copy(encryptionKey = it); validationError = null },
-                        label = "恢复密钥",
-                    )
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            when {
-                                draft.encryptionKey.isBlank() -> "尚未设置密钥"
-                                validRecoveryKey -> "密钥已填写"
-                                else -> "请填写完整密钥"
-                            },
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (isRecoveryKeySetup) {
+                        SecretField(
+                            value = draft.encryptionKey,
+                            onValueChange = { draft = draft.copy(encryptionKey = it); validationError = null },
+                            label = "恢复密钥",
                         )
-                        if (draft.encryptionKey.isBlank()) {
-                            OutlinedButton(onClick = { confirmNewRecoveryKey = true }, enabled = !state.syncing) {
-                                Icon(Icons.Outlined.VpnKey, null, Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("生成密钥")
-                            }
-                        } else {
-                            OutlinedButton(
-                                onClick = {
-                                    val key = draft.encryptionKey.trim()
-                                    if (clipboard != null && runCatching { SyncEncryptionKey.parse(key) }.isSuccess) {
-                                        val clip = ClipData.newPlainText("ColorMemo 恢复密钥", key).apply {
-                                            description.extras = PersistableBundle().apply {
-                                                putBoolean("android.content.extra.IS_SENSITIVE", true)
-                                            }
-                                        }
-                                        clipboard.setPrimaryClip(clip)
-                                        recoveryKeyCopied = true
-                                    }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                when {
+                                    draft.encryptionKey.isBlank() -> "尚未设置密钥"
+                                    validRecoveryKey -> "密钥已填写"
+                                    else -> "请填写完整密钥"
                                 },
-                                enabled = clipboard != null && validRecoveryKey,
-                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                            ) {
-                                Icon(if (recoveryKeyCopied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, null, Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(if (recoveryKeyCopied) "已复制" else "复制密钥")
-                            }
-                            Box {
-                                IconButton(onClick = { recoveryKeyMenu = true }, enabled = !state.syncing) {
-                                    Icon(Icons.Outlined.MoreVert, "恢复密钥更多操作")
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (draft.encryptionKey.isBlank()) {
+                                OutlinedButton(onClick = { confirmNewRecoveryKey = true }, enabled = !state.syncing) {
+                                    Icon(Icons.Outlined.VpnKey, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("生成密钥")
                                 }
-                                DropdownMenu(expanded = recoveryKeyMenu, onDismissRequest = { recoveryKeyMenu = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text("重新生成密钥…") },
-                                        leadingIcon = { Icon(Icons.Outlined.VpnKey, null) },
-                                        onClick = { recoveryKeyMenu = false; confirmNewRecoveryKey = true },
-                                    )
+                            } else {
+                                OutlinedButton(
+                                    onClick = {
+                                        val key = draft.encryptionKey.trim()
+                                        if (clipboard != null && runCatching { SyncEncryptionKey.parse(key) }.isSuccess) {
+                                            val clip = ClipData.newPlainText("ColorMemo 恢复密钥", key).apply {
+                                                description.extras = PersistableBundle().apply {
+                                                    putBoolean("android.content.extra.IS_SENSITIVE", true)
+                                                }
+                                            }
+                                            clipboard.setPrimaryClip(clip)
+                                            recoveryKeyCopied = true
+                                        }
+                                    },
+                                    enabled = clipboard != null && validRecoveryKey,
+                                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                                ) {
+                                    Icon(if (recoveryKeyCopied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(if (recoveryKeyCopied) "已复制" else "复制密钥")
+                                }
+                                Box {
+                                    IconButton(onClick = { recoveryKeyMenu = true }, enabled = !state.syncing) {
+                                        Icon(Icons.Outlined.MoreVert, "恢复密钥更多操作")
+                                    }
+                                    DropdownMenu(expanded = recoveryKeyMenu, onDismissRequest = { recoveryKeyMenu = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text("重新生成密钥…") },
+                                            leadingIcon = { Icon(Icons.Outlined.VpnKey, null) },
+                                            onClick = { recoveryKeyMenu = false; confirmNewRecoveryKey = true },
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    Text(
-                        "首次设置时生成密钥；连接已有加密数据时，请输入原密钥。新密钥无法解密原有数据。请在应用外安全保存密钥，丢失后无法恢复云端便签。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (needsRecoveryConfirmation) {
+                        Text(
+                            "仅首次配置时提供密钥生成和复制。连接已有加密数据时，请输入原密钥。请在保存设置前将密钥安全备份到应用外；保存后不再显示密钥，也不再提供复制或生成入口。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Row(
                             modifier = Modifier.fillMaxWidth().toggleable(
                                 value = recoveryKeySaved,
@@ -283,6 +287,16 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                             Checkbox(checked = recoveryKeySaved, onCheckedChange = null, enabled = draft.encryptionKey.isNotBlank())
                             Text("已在应用外安全保存恢复密钥", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
                         }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                            Text("恢复密钥已配置", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Text(
+                            "密钥已安全保存在本机，不再提供显示、复制或生成入口。在其他设备配置同步时，请使用首次配置时备份的恢复密钥。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     Text(
                         "保存设置后，下一次成功同步才会将便签以密文上传。本机数据库和手动导出的备份仍是明文。旧版明文云端数据不受支持，请使用新的空目录或对象前缀。",
@@ -369,13 +383,13 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
             }
         }
     }
-    if (confirmNewRecoveryKey && draft.enabled) {
+    if (confirmNewRecoveryKey && draft.enabled && isRecoveryKeySetup) {
         val replacing = draft.encryptionKey.isNotBlank()
         AlertDialog(
             onDismissRequest = { confirmNewRecoveryKey = false },
             title = { Text(if (replacing) "重新生成恢复密钥？" else "生成恢复密钥？") },
             text = { Text(if (replacing)
-                "新密钥无法解密原有云端数据。请先保存原密钥；只有要使用新的空同步位置时，才需要重新生成。生成后还需保存设置才会生效。"
+                "这会替换尚未保存的恢复密钥。新密钥无法解密原有云端数据；连接已有数据时，请使用原密钥。请在首次保存设置前备份密钥，保存后不再提供显示、复制或生成入口。"
                 else "首次设置云同步时才需要生成新密钥。如果已有其他设备或云端数据，请取消并填写原来的恢复密钥。") },
             confirmButton = {
                 TextButton(onClick = {
