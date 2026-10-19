@@ -45,23 +45,27 @@ internal class AttachmentStore(private val directory: File) {
 
 internal fun attachmentStore(context: Context) = AttachmentStore(File(context.filesDir, "attachments"))
 
-internal fun readAttachment(context: Context, uri: Uri): NoteAttachment {
+internal fun readImageAttachment(context: Context, uri: Uri): NoteAttachment {
     val resolver = context.contentResolver
     val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) cursor.getString(0) else null
-    } ?: "附件"
-    val bytes = requireNotNull(resolver.openInputStream(uri)) { "无法读取附件" }.use { input ->
+    } ?: "图片"
+    val bytes = requireNotNull(resolver.openInputStream(uri)) { "无法读取图片" }.use { input ->
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
         while (true) {
             val count = input.read(buffer)
             if (count < 0) break
-            require(output.size().toLong() + count <= NoteAttachment.MAX_FILE_BYTES) { "单个附件最多 5 MiB" }
+            require(output.size().toLong() + count <= NoteAttachment.MAX_FILE_BYTES) { "单张图片最多 5 MiB" }
             output.write(buffer, 0, count)
         }
         output.toByteArray()
     }
-    return NoteAttachment.create(name, resolver.getType(uri).orEmpty(), bytes).also { attachmentStore(context).persist(it) }
+    // Validate the actual image, since providers need not honor the picker MIME filter.
+    val mimeType = imageMimeType(bytes)
+    val preview = requireNotNull(decodeNoteImage(bytes, 384)) { "图片无法解码，请选择其他图片。" }
+    preview.recycle()
+    return NoteAttachment.create(name, mimeType, bytes).also { attachmentStore(context).persist(it) }
 }
 
 /** Only this narrow cache directory is exposed, with a temporary read grant. */

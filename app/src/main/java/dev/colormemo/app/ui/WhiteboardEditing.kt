@@ -8,8 +8,8 @@ import kotlin.math.abs
 import kotlin.math.round
 
 internal fun whiteboardPoint(x: Float, y: Float): WhiteboardPoint = WhiteboardPoint(
-    x = round(x.coerceIn(0f, Whiteboard.CANVAS_SIZE) * 2f) / 2f,
-    y = round(y.coerceIn(0f, Whiteboard.CANVAS_SIZE) * 2f) / 2f,
+    x = round(x.coerceIn(0f, Whiteboard.CANVAS_WIDTH) * 2f) / 2f,
+    y = round(y.coerceIn(0f, Whiteboard.CANVAS_HEIGHT) * 2f) / 2f,
 )
 
 internal fun WhiteboardPoint.isFarEnoughFrom(other: WhiteboardPoint, distance: Float): Boolean {

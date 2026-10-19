@@ -28,7 +28,9 @@ internal fun writeMarkdownArchive(notes: List<Note>, output: OutputStream) {
                 if (note.whiteboard != null) append("\n![白板](<").append(basename).append(".svg>)\n")
                 note.attachments.forEachIndexed { attachmentIndex, attachment ->
                     val label = attachment.fileName.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
-                    append("\n[").append(label).append("](<").append(attachmentNames[attachmentIndex]).append(">)\n")
+                    append('\n')
+                    if (attachment.isImage) append('!')
+                    append('[').append(label).append("](<").append(attachmentNames[attachmentIndex]).append(">)\n")
                 }
             }
             zip.writeTextEntry("$folder$basename.md", markdown)

@@ -177,7 +177,7 @@ object SyncJson {
             }
             if (stroke.points.any { point ->
                     !point.x.isFinite() || !point.y.isFinite() ||
-                        point.x !in 0f..Whiteboard.CANVAS_SIZE || point.y !in 0f..Whiteboard.CANVAS_SIZE
+                        point.x !in 0f..Whiteboard.CANVAS_WIDTH || point.y !in 0f..Whiteboard.CANVAS_HEIGHT
                 }
             ) {
                 throw SyncProtocolException("白板坐标数据无效，未覆盖任何数据。")

@@ -49,7 +49,7 @@ class WhiteboardSyncTest {
     @Test
     fun singlePointStrokeAndAllCanvasEdgesAreValid() {
         val edges = listOf(WhiteboardPoint(0f, 0f), WhiteboardPoint(1000f, 0f),
-            WhiteboardPoint(0f, 1000f), WhiteboardPoint(1000f, 1000f))
+            WhiteboardPoint(0f, 2000f), WhiteboardPoint(1000f, 2000f))
         val drawing = Whiteboard(edges.mapIndexed { index, point ->
             WhiteboardStroke(
                 color = if (index % 2 == 0) 0xFF000000 else 0xFFFFFFFF,
@@ -92,7 +92,7 @@ class WhiteboardSyncTest {
     @Test
     fun outOfBoundsCoordinatesAreRejectedOnBothAxes() {
         listOf(WhiteboardPoint(-0.01f, 0f), WhiteboardPoint(0f, -0.01f),
-            WhiteboardPoint(1000.01f, 0f), WhiteboardPoint(0f, 1000.01f)).forEach { point ->
+            WhiteboardPoint(1000.01f, 0f), WhiteboardPoint(0f, 2000.01f)).forEach { point ->
             assertRejected(Whiteboard(listOf(stroke.copy(points = listOf(point)))))
         }
     }

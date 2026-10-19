@@ -70,7 +70,7 @@ class EncryptedSyncJsonTest {
                 color = NoteColor.CORAL, isPinned = true, isArchived = true, reminderAt = 8,
                 parentRevision = "parent", ancestorRevisions = setOf("grandparent", "parent"),
                 conflictOf = "original", conflictRevision = "conflicting",
-                whiteboard = Whiteboard(listOf(WhiteboardStroke(points = listOf(WhiteboardPoint(2f, 3f))))),
+                whiteboard = Whiteboard(listOf(WhiteboardStroke(points = listOf(WhiteboardPoint(2f, 1750f))))),
             ),
             note.copy(id = "b-trashed", deletedAt = 4, content = "回收站秘密"),
             note.copy(id = "c-purged", deletedAt = 5, isPurged = true),

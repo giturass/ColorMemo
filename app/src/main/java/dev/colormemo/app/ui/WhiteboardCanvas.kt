@@ -25,11 +25,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.Undo
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -37,7 +35,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -79,7 +76,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardPoint
-import kotlin.math.roundToInt
 
 private const val HISTORY_LIMIT = 25
 private const val ERASER_RADIUS = 28f
@@ -300,12 +296,14 @@ internal fun WhiteboardEditor(
                 if (size.width > 0f && size.height > 0f) {
                     val transform = viewport.transform(size.width, size.height)
                     val origin = Offset(transform.originX, transform.originY)
-                    val boardSize = transform.canvasSizePx
-                    clipRect(origin.x, origin.y, origin.x + boardSize, origin.y + boardSize) {
-                        drawRect(Color.White, origin, Size(boardSize, boardSize))
+                    val boardWidth = transform.canvasWidthPx
+                    val boardHeight = transform.canvasHeightPx
+                    clipRect(origin.x, origin.y, origin.x + boardWidth, origin.y + boardHeight) {
+                        drawRect(Color.White, origin, Size(boardWidth, boardHeight))
                         // Subtle guide dots make movement visible even on an empty board.
-                        for (x in 0..20) for (y in 0..20) {
-                            drawCircle(Color(0xFFE0E3E7), 0.7.dp.toPx(), origin + Offset(x * boardSize / 20f, y * boardSize / 20f))
+                        val gridStep = 50f * transform.scale
+                        for (x in 0..(Whiteboard.CANVAS_WIDTH / 50f).toInt()) for (y in 0..(Whiteboard.CANVAS_HEIGHT / 50f).toInt()) {
+                            drawCircle(Color(0xFFE0E3E7), 0.7.dp.toPx(), origin + Offset(x * gridStep, y * gridStep))
                         }
                         drawWhiteboard(whiteboard, transform.scale, origin)
                         eraserPosition?.let { point ->
@@ -334,44 +332,6 @@ internal fun WhiteboardEditor(
                         .semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
-
-            Surface(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                tonalElevation = 2.dp,
-            ) {
-                val canNavigate = !drawing && canvasSize.width > 0 && canvasSize.height > 0
-                fun zoomBy(factor: Float) {
-                    val width = canvasSize.width.toFloat()
-                    val height = canvasSize.height.toFloat()
-                    viewport = viewport.applyGesture(width, height, width / 2f, height / 2f, zoomChange = factor)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { zoomBy(1f / 1.5f) }, enabled = canNavigate && viewport.zoom > WhiteboardViewport.MIN_ZOOM) {
-                        Icon(Icons.Outlined.Remove, "缩小画布")
-                    }
-                    Text("${(viewport.zoom * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
-                    IconButton(onClick = { zoomBy(1.5f) }, enabled = canNavigate && viewport.zoom < WhiteboardViewport.MAX_ZOOM) {
-                        Icon(Icons.Outlined.Add, "放大画布")
-                    }
-                    TextButton(onClick = { viewport = WhiteboardViewport(zoom = WhiteboardViewport.MIN_ZOOM) }, enabled = canNavigate) {
-                        Text("全图")
-                    }
-                }
-            }
-        }
-
-        if (!readOnly) {
-            Text(
-                when (tool) {
-                    WhiteboardTool.PEN -> "单指绘画 · 双指移动和缩放"
-                    WhiteboardTool.ERASER -> "单指擦除整笔 · 双指移动和缩放"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
         }
     }
 
@@ -440,7 +400,7 @@ internal fun WhiteboardEditor(
                             points = listOf(WhiteboardPoint(100f, 500f), WhiteboardPoint(500f, 450f), WhiteboardPoint(900f, 500f)),
                             brush = brush,
                         )))
-                        val scale = size.width / Whiteboard.CANVAS_SIZE
+                        val scale = size.width / Whiteboard.CANVAS_WIDTH
                         drawWhiteboard(sample, scale, Offset(0f, size.height / 2f - 475f * scale))
                     }
                 }
@@ -472,7 +432,7 @@ internal fun WhiteboardPreview(whiteboard: Whiteboard, modifier: Modifier = Modi
     Canvas(
         modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
+            .aspectRatio(Whiteboard.CANVAS_WIDTH / Whiteboard.CANVAS_HEIGHT)
             .clip(MaterialTheme.shapes.medium)
             .background(Color.White)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
@@ -484,7 +444,7 @@ internal fun WhiteboardPreview(whiteboard: Whiteboard, modifier: Modifier = Modi
 
 private fun DrawScope.drawWhiteboard(
     whiteboard: Whiteboard,
-    scale: Float = size.width / Whiteboard.CANVAS_SIZE,
+    scale: Float = size.width / Whiteboard.CANVAS_WIDTH,
     origin: Offset = Offset.Zero,
 ) {
     whiteboard.strokes.forEach { stroke ->

@@ -7,11 +7,12 @@ import org.junit.Test
 
 class WhiteboardViewportTest {
     @Test
-    fun defaultCameraShowsAnEnlargedBoardAtTheViewportCenter() {
+    fun defaultCameraOpensOnTheOriginalAreaWithMoreSpaceBelow() {
         val transform = WhiteboardViewport().transform(400f, 700f)
 
-        assertEquals(0.8f, transform.scale, EPSILON)
-        assertEquals(800f, transform.canvasSizePx, EPSILON)
+        assertEquals(0.7f, transform.scale, EPSILON)
+        assertEquals(700f, transform.canvasWidthPx, EPSILON)
+        assertEquals(1400f, transform.canvasHeightPx, EPSILON)
         assertPoint(200f, 350f, transform.worldToScreen(500f, 500f))
         assertPoint(500f, 500f, transform.screenToWorld(200f, 350f))
     }
@@ -62,21 +63,21 @@ class WhiteboardViewportTest {
             .transform(600f, 800f)
 
         assertPoint(0f, 0f, topLeft.worldToScreen(0f, 0f))
-        assertPoint(600f, 800f, bottomRight.worldToScreen(1000f, 1000f))
+        assertPoint(600f, 800f, bottomRight.worldToScreen(1000f, 2000f))
         assertTrue(topLeft.containsScreenPoint(0f, 0f))
         assertTrue(bottomRight.containsScreenPoint(600f, 800f))
     }
 
     @Test
-    fun fitViewCentersTheWholeSquareBoardInBothOrientations() {
+    fun fitViewCentersTheWholePortraitBoardInBothOrientations() {
         val viewport = WhiteboardViewport(centerX = 100f, centerY = 900f, zoom = 1f)
         val portrait = viewport.transform(400f, 700f)
         val landscape = viewport.transform(700f, 400f)
 
-        assertPoint(0f, 150f, portrait.worldToScreen(0f, 0f))
-        assertPoint(400f, 550f, portrait.worldToScreen(1000f, 1000f))
-        assertPoint(150f, 0f, landscape.worldToScreen(0f, 0f))
-        assertPoint(550f, 400f, landscape.worldToScreen(1000f, 1000f))
+        assertPoint(25f, 0f, portrait.worldToScreen(0f, 0f))
+        assertPoint(375f, 700f, portrait.worldToScreen(1000f, 2000f))
+        assertPoint(250f, 0f, landscape.worldToScreen(0f, 0f))
+        assertPoint(450f, 400f, landscape.worldToScreen(1000f, 2000f))
     }
 
     @Test
@@ -84,12 +85,12 @@ class WhiteboardViewportTest {
         val fitted = WhiteboardViewport(zoom = 1f).transform(400f, 700f)
         val enlarged = WhiteboardViewport(zoom = 4f).transform(400f, 700f)
 
-        assertFalse(fitted.containsScreenPoint(200f, 100f))
-        assertFalse(fitted.containsScreenPoint(200f, 600f))
-        assertTrue(fitted.containsScreenPoint(0f, 150f))
-        assertTrue(fitted.containsScreenPoint(400f, 550f))
-        assertTrue(fitted.screenToWorld(200f, 100f).y < 0f)
-        assertTrue(fitted.screenToWorld(200f, 600f).y > 1000f)
+        assertFalse(fitted.containsScreenPoint(10f, 350f))
+        assertFalse(fitted.containsScreenPoint(390f, 350f))
+        assertTrue(fitted.containsScreenPoint(25f, 0f))
+        assertTrue(fitted.containsScreenPoint(375f, 700f))
+        assertTrue(fitted.screenToWorld(10f, 350f).x < 0f)
+        assertTrue(fitted.screenToWorld(390f, 350f).x > 1000f)
         assertFalse(enlarged.containsScreenPoint(-1f, 300f))
         assertFalse(enlarged.containsScreenPoint(200f, 701f))
     }
@@ -107,7 +108,7 @@ class WhiteboardViewportTest {
         assertEquals(maximum.centerX, unchanged.centerX, EPSILON)
         assertEquals(maximum.centerY, unchanged.centerY, EPSILON)
         assertEquals(WhiteboardViewport.MIN_ZOOM, minimum.zoom, EPSILON)
-        assertPoint(300f, 400f, minimum.transform(600f, 800f).worldToScreen(500f, 500f))
+        assertPoint(300f, 400f, minimum.transform(600f, 800f).worldToScreen(500f, 1000f))
     }
 
     @Test
@@ -119,7 +120,7 @@ class WhiteboardViewportTest {
 
         for ((width, height) in listOf(600f to 800f, 800f to 600f, 360f to 1000f)) {
             val transform = viewport.transform(width, height)
-            for ((x, y) in listOf(0f to 0f, 123.5f to 987f, 500f to 500f, 1000f to 1000f)) {
+            for ((x, y) in listOf(0f to 0f, 123.5f to 987f, 500f to 1750f, 1000f to 2000f)) {
                 val screen = transform.worldToScreen(x, y)
                 assertPoint(x, y, transform.screenToWorld(screen.x, screen.y))
             }
@@ -128,13 +129,14 @@ class WhiteboardViewportTest {
 
     @Test
     fun resizingPreservesTheCameraCenterWhereTheBoardCanCoverTheViewport() {
-        val viewport = WhiteboardViewport(centerX = 425f, centerY = 575f, zoom = 4f)
+        val viewport = WhiteboardViewport(centerX = 500f, centerY = 575f, zoom = 4f)
         val portrait = viewport.transform(400f, 700f)
         val landscape = viewport.transform(700f, 400f)
 
-        assertPoint(200f, 350f, portrait.worldToScreen(425f, 575f))
-        assertPoint(350f, 200f, landscape.worldToScreen(425f, 575f))
-        assertEquals(portrait.scale, landscape.scale, EPSILON)
+        assertPoint(200f, 350f, portrait.worldToScreen(500f, 575f))
+        assertPoint(350f, 200f, landscape.worldToScreen(500f, 575f))
+        assertEquals(1.4f, portrait.scale, EPSILON)
+        assertEquals(0.8f, landscape.scale, EPSILON)
     }
 
     @Test
@@ -145,9 +147,21 @@ class WhiteboardViewportTest {
         val transform = resized.transform(800f, 300f)
 
         assertEquals(500f, resized.centerX, EPSILON)
-        assertEquals(250f, resized.centerY, EPSILON)
-        assertPoint(100f, 0f, transform.worldToScreen(0f, 0f))
-        assertPoint(700f, 600f, transform.worldToScreen(1000f, 1000f))
+        assertEquals(500f, resized.centerY, EPSILON)
+        assertPoint(250f, 0f, transform.worldToScreen(0f, 0f))
+        assertPoint(550f, 600f, transform.worldToScreen(1000f, 2000f))
+    }
+
+    @Test
+    fun panningDownMakesTheAddedAreaDrawable() {
+        val transform = WhiteboardViewport().applyGesture(
+            400f, 700f, 200f, 350f, panY = -10000f,
+        ).transform(400f, 700f)
+        val lowerPoint = transform.worldToScreen(500f, 1750f)
+
+        assertTrue(transform.containsScreenPoint(lowerPoint.x, lowerPoint.y))
+        assertPoint(500f, 1750f, transform.screenToWorld(lowerPoint.x, lowerPoint.y))
+        assertPoint(200f, 700f, transform.worldToScreen(500f, 2000f))
     }
 
     private fun assertPoint(x: Float, y: Float, actual: WhiteboardViewportPoint) {

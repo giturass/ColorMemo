@@ -4,16 +4,17 @@ import dev.colormemo.core.model.Whiteboard
 
 /** Camera coordinates are independent of screen pixels, density and persisted strokes. */
 internal data class WhiteboardViewport(
-    val centerX: Float = Whiteboard.CANVAS_SIZE / 2f,
-    val centerY: Float = Whiteboard.CANVAS_SIZE / 2f,
+    val centerX: Float = Whiteboard.CANVAS_WIDTH / 2f,
+    // Open on the original upper area, with the added space available below it.
+    val centerY: Float = Whiteboard.CANVAS_WIDTH / 2f,
     val zoom: Float = DEFAULT_ZOOM,
 ) {
     fun constrained(width: Float, height: Float): WhiteboardViewport {
         val nextZoom = zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
         val scale = fitScale(width, height) * nextZoom
         return copy(
-            centerX = constrainCenter(centerX, width / (2f * scale)),
-            centerY = constrainCenter(centerY, height / (2f * scale)),
+            centerX = constrainCenter(centerX, width / (2f * scale), Whiteboard.CANVAS_WIDTH),
+            centerY = constrainCenter(centerY, height / (2f * scale), Whiteboard.CANVAS_HEIGHT),
             zoom = nextZoom,
         )
     }
@@ -24,8 +25,8 @@ internal data class WhiteboardViewport(
         return WhiteboardTransform(
             viewportWidth = width,
             viewportHeight = height,
-            originX = canvasOrigin(width, camera.centerX, scale),
-            originY = canvasOrigin(height, camera.centerY, scale),
+            originX = canvasOrigin(width, camera.centerX, scale, Whiteboard.CANVAS_WIDTH),
+            originY = canvasOrigin(height, camera.centerY, scale, Whiteboard.CANVAS_HEIGHT),
             scale = scale,
         )
     }
@@ -63,18 +64,18 @@ internal data class WhiteboardViewport(
 
         private fun fitScale(width: Float, height: Float): Float {
             require(width.isFinite() && height.isFinite() && width > 0f && height > 0f)
-            return minOf(width, height) / Whiteboard.CANVAS_SIZE
+            return minOf(width / Whiteboard.CANVAS_WIDTH, height / Whiteboard.CANVAS_HEIGHT)
         }
 
-        private fun constrainCenter(center: Float, halfVisibleWorld: Float): Float =
-            if (halfVisibleWorld >= Whiteboard.CANVAS_SIZE / 2f) {
-                Whiteboard.CANVAS_SIZE / 2f
+        private fun constrainCenter(center: Float, halfVisibleWorld: Float, canvasExtent: Float): Float =
+            if (halfVisibleWorld >= canvasExtent / 2f) {
+                canvasExtent / 2f
             } else {
-                center.coerceIn(halfVisibleWorld, Whiteboard.CANVAS_SIZE - halfVisibleWorld)
+                center.coerceIn(halfVisibleWorld, canvasExtent - halfVisibleWorld)
             }
 
-        private fun canvasOrigin(viewportSize: Float, center: Float, scale: Float): Float {
-            val canvasSize = Whiteboard.CANVAS_SIZE * scale
+        private fun canvasOrigin(viewportSize: Float, center: Float, scale: Float, canvasExtent: Float): Float {
+            val canvasSize = canvasExtent * scale
             return if (canvasSize <= viewportSize) {
                 (viewportSize - canvasSize) / 2f
             } else {
@@ -94,7 +95,8 @@ internal data class WhiteboardTransform(
     val originY: Float,
     val scale: Float,
 ) {
-    val canvasSizePx: Float get() = Whiteboard.CANVAS_SIZE * scale
+    val canvasWidthPx: Float get() = Whiteboard.CANVAS_WIDTH * scale
+    val canvasHeightPx: Float get() = Whiteboard.CANVAS_HEIGHT * scale
 
     fun worldToScreen(x: Float, y: Float): WhiteboardViewportPoint =
         WhiteboardViewportPoint(originX + x * scale, originY + y * scale)
@@ -105,6 +107,6 @@ internal data class WhiteboardTransform(
 
     fun containsScreenPoint(x: Float, y: Float): Boolean =
         x in 0f..viewportWidth && y in 0f..viewportHeight &&
-            x >= originX && x <= originX + canvasSizePx &&
-            y >= originY && y <= originY + canvasSizePx
+            x >= originX && x <= originX + canvasWidthPx &&
+            y >= originY && y <= originY + canvasHeightPx
 }

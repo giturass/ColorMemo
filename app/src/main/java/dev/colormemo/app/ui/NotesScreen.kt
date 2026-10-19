@@ -26,7 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SelectAll
-import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Check
@@ -100,6 +101,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.colormemo.app.ui.theme.containerColor
+import dev.colormemo.app.data.isImage
 import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteColor
@@ -518,6 +520,9 @@ private fun MemoCard(
                     }
                     Spacer(Modifier.height(6.dp))
                 }
+                note.attachments.firstOrNull { it.isImage }?.let { image ->
+                    NoteImagePreview(image, Modifier.fillMaxWidth().height(120.dp).padding(bottom = 12.dp))
+                }
                 if (note.title.isNotBlank()) {
                     Text(note.title, style = MaterialTheme.typography.titleMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
                     if (summary.isNotEmpty()) Spacer(Modifier.height(8.dp))
@@ -542,8 +547,13 @@ private fun MemoCard(
                 }
                 if (note.attachments.isNotEmpty()) {
                     Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Outlined.AttachFile, null, Modifier.size(14.dp))
-                        Text("${note.attachments.size} 个附件", style = MaterialTheme.typography.labelSmall)
+                        val imageCount = note.attachments.count { it.isImage }
+                        val fileCount = note.attachments.size - imageCount
+                        Icon(if (imageCount > 0) Icons.Outlined.Image else Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(14.dp))
+                        Text(listOfNotNull(
+                            if (imageCount > 0) "$imageCount 张图片" else null,
+                            if (fileCount > 0) "$fileCount 个文件" else null,
+                        ).joinToString(" · "), style = MaterialTheme.typography.labelSmall)
                     }
                 }
                 if (note.conflictOf != null) {

@@ -208,7 +208,7 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                     HorizontalDivider()
                     Text("端到端加密", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "所有同步内容（包括便签、白板、附件、颜色和提醒）都会在本机加密后上传。每台设备必须使用同一恢复密钥。",
+                        "所有同步内容（包括便签、白板、图片、颜色和提醒）都会在本机加密后上传。每台设备必须使用同一恢复密钥。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

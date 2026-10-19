@@ -24,7 +24,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.StrikethroughS
 import androidx.compose.material.icons.outlined.Archive
@@ -94,7 +94,8 @@ import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteAttachment
 import dev.colormemo.app.data.attachmentStore
-import dev.colormemo.app.data.readAttachment
+import dev.colormemo.app.data.readImageAttachment
+import dev.colormemo.app.data.isImage
 import dev.colormemo.app.data.prepareAttachmentIntent
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.model.Whiteboard
@@ -141,9 +142,9 @@ internal fun NoteEditorScreen(
         )
     }
     var attachments by rememberSaveable(stateSaver = attachmentSaver) { mutableStateOf(note?.attachments.orEmpty()) }
-    var showAttachments by rememberSaveable { mutableStateOf(false) }
-    var importingAttachment by remember { mutableStateOf(false) }
-    var attachmentError by remember { mutableStateOf<String?>(null) }
+    var selectedImageId by rememberSaveable { mutableStateOf<String?>(null) }
+    var importingImage by remember { mutableStateOf(false) }
+    var imageError by remember { mutableStateOf<String?>(null) }
     var color by rememberSaveable { mutableStateOf(note?.color ?: NoteColor.DEFAULT) }
     var pinned by rememberSaveable { mutableStateOf(note?.isPinned ?: false) }
     var archived by rememberSaveable { mutableStateOf(note?.isArchived ?: false) }
@@ -168,27 +169,27 @@ internal fun NoteEditorScreen(
     val initialFingerprint = rememberSaveable { draft.fingerprint() }
     val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, attachments) { draft.fingerprint() }
     val dirty = fingerprint != initialFingerprint
-    val canSave = !saving && !importingAttachment && (title.isNotBlank() || content.text.isNotBlank() || attachments.isNotEmpty() ||
+    val canSave = !saving && !importingImage && (title.isNotBlank() || content.text.isNotBlank() || attachments.isNotEmpty() ||
         whiteboard?.strokes?.isNotEmpty() == true || (whiteboard != null && note != null)) &&
         title.length <= MAX_TITLE_LENGTH && content.text.length <= MAX_CONTENT_LENGTH
-    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            importingAttachment = true
-            attachmentError = null
+            importingImage = true
+            imageError = null
             scope.launch {
                 try {
-                    val attachment = withContext(Dispatchers.IO) { readAttachment(context, uri) }
-                    require(attachments.size < NoteAttachment.MAX_PER_NOTE) { "每条笔记最多 20 个附件" }
-                    require(attachments.sumOf { it.sizeBytes.toLong() } + attachment.sizeBytes <= NoteAttachment.MAX_NOTE_BYTES) { "每条笔记的附件合计最多 8 MiB" }
+                    val attachment = withContext(Dispatchers.IO) { readImageAttachment(context, uri) }
+                    require(attachments.size < NoteAttachment.MAX_PER_NOTE) { "每条笔记最多插入 20 张图片（含已有文件）。" }
+                    require(attachments.sumOf { it.sizeBytes.toLong() } + attachment.sizeBytes <= NoteAttachment.MAX_NOTE_BYTES) { "每条笔记的图片及已有文件合计最多 8 MiB。" }
                     attachments = attachments + attachment
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: IllegalArgumentException) {
-                    attachmentError = error.message ?: "无法添加附件"
+                    imageError = error.message ?: "无法插入图片"
                 } catch (_: Exception) {
-                    attachmentError = "无法读取附件，请重新选择文件。"
+                    imageError = "无法读取图片，请重新选择。"
                 } finally {
-                    importingAttachment = false
+                    importingImage = false
                 }
             }
         }
@@ -201,11 +202,11 @@ internal fun NoteEditorScreen(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: android.content.ActivityNotFoundException) {
-                attachmentError = "没有可打开此类附件的应用。"
-                showAttachments = true
+                selectedImageId = null
+                imageError = "没有可打开此文件的应用。"
             } catch (_: Exception) {
-                attachmentError = "无法打开附件，请重试。"
-                showAttachments = true
+                selectedImageId = null
+                imageError = "无法打开文件，请重试。"
             }
         }
     }
@@ -213,7 +214,7 @@ internal fun NoteEditorScreen(
     val remoteChanged = !state.loading && note != null && currentNote != null && currentNote.revision != note.revision
 
     val close: () -> Unit = {
-        if (!saving && !importingAttachment) {
+        if (!saving && !importingImage) {
             if (dirty && !readOnly) showLeaveDialog = true else onClose()
         }
     }
@@ -289,7 +290,6 @@ internal fun NoteEditorScreen(
                                 IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "更多操作") }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                     ModifiedTimeLabel(note)
-                                    if (attachments.isNotEmpty()) DropdownMenuItem(text = { Text("附件") }, onClick = { menuOpen = false; showAttachments = true })
                                     if (whiteboard != null) DropdownMenuItem(text = { Text("标题与说明") }, onClick = { menuOpen = false; showWhiteboardDetails = true })
                                 }
                             }
@@ -318,7 +318,14 @@ internal fun NoteEditorScreen(
                         Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                             Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
                                 IconToggleButton(checked = showPalette, onCheckedChange = { showPalette = it }, enabled = !saving) { Icon(Icons.Outlined.Palette, "选择卡片颜色") }
-                                IconButton(onClick = { showAttachments = true }, enabled = !saving) { Icon(Icons.Outlined.AttachFile, "附件") }
+                                IconButton(onClick = {
+                                    imageError = null
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                    imagePicker.launch(arrayOf("image/*"))
+                                }, enabled = !saving && !importingImage && attachments.size < NoteAttachment.MAX_PER_NOTE) {
+                                    Icon(Icons.Outlined.AddPhotoAlternate, "插入图片")
+                                }
                                 IconButton(onClick = { showReminder = true }, enabled = !saving) { Icon(Icons.Outlined.NotificationsNone, "设置提醒") }
                             }
                             Box(Modifier.align(Alignment.Center)) {
@@ -355,7 +362,7 @@ internal fun NoteEditorScreen(
     ) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).then(
-                if (whiteboard != null) Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                if (whiteboard != null) Modifier.padding(horizontal = 4.dp)
                 else Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp),
             ),
         ) {
@@ -363,6 +370,13 @@ internal fun NoteEditorScreen(
                 EditorNotice("其他设备已修改这条便签。保存时会保留两份修改。")
             }
             saveError?.let { EditorNotice(it, isError = true) }
+            imageError?.let { EditorNotice(it, isError = true) }
+            if (importingImage) {
+                Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("正在插入图片…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
             if (readOnly) EditorNotice("这条便签在回收站中，恢复后即可编辑。")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (archived) AssistChip(onClick = { if (!readOnly && !saving) archived = false }, label = { Text("已归档") }, leadingIcon = { Icon(Icons.Outlined.Archive, null, Modifier.size(16.dp)) })
@@ -376,12 +390,12 @@ internal fun NoteEditorScreen(
                 }
             }
             if (attachments.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    attachments.forEach { attachment ->
-                        AssistChip(onClick = { openAttachment(attachment) }, label = { Text(attachment.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(140.dp)) },
-                            leadingIcon = { Icon(Icons.Outlined.AttachFile, null, Modifier.size(16.dp)) })
-                    }
-                }
+                NoteImagesRow(
+                    attachments = attachments,
+                    editable = !readOnly && !saving && !importingImage,
+                    onOpen = { if (it.isImage) selectedImageId = it.id else openAttachment(it) },
+                    onRemove = { image -> attachments = attachments.filterNot { it.id == image.id } },
+                )
             }
             if (whiteboard == null) Spacer(Modifier.height(8.dp))
             if (whiteboard != null) {
@@ -443,16 +457,11 @@ internal fun NoteEditorScreen(
             }
         }
     }
-    if (showAttachments) {
-        AttachmentDialog(
-            attachments = attachments,
-            readOnly = readOnly || saving,
-            importing = importingAttachment,
-            error = attachmentError,
-            onAdd = { attachmentError = null; attachmentPicker.launch(arrayOf("*/*")) },
-            onOpen = openAttachment,
-            onRemove = { attachment -> attachments = attachments.filterNot { it.id == attachment.id } },
-            onDismiss = { if (!importingAttachment) { showAttachments = false; attachmentError = null } },
+    attachments.firstOrNull { it.id == selectedImageId }?.let { image ->
+        NoteImageDialog(
+            attachment = image,
+            onOpenOriginal = { openAttachment(image) },
+            onDismiss = { selectedImageId = null },
         )
     }
     if (showWhiteboardDetails && whiteboard != null) {
@@ -516,7 +525,7 @@ internal fun NoteEditorScreen(
             title = { Text(if (whiteboard != null) "在白板上记录" else "用 Markdown 记录") },
             text = {
                 if (whiteboard != null) {
-                    Text("单指或触控笔写画，双指拖动画布或捏合缩放。点击「全图」回到完整画布。\n\n画笔设置可选择细签字笔、水彩笔、马克笔，并调整颜色和八档粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。")
+                    Text("单指或触控笔写画，双指拖动画布或捏合缩放。画布向下延伸，双指向上拖动即可继续在下方创作；双指捏合缩小可查看完整画布。\n\n画笔设置可选择细签字笔、水彩笔、马克笔，并调整颜色和八档粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。")
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text("用底部工具栏插入格式，点击「预览」查看排版。")

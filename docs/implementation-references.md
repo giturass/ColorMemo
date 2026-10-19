@@ -19,7 +19,8 @@
 - [Android 自适应图标](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive)：前景、背景和 monochrome 图层；Android 13 起支持主题图标。
 - [Compose 手势处理](https://developer.android.com/develop/ui/compose/touch-input/pointer-input/understand-gestures)（2026-10-18）：`awaitEachGesture` / `awaitFirstDown` 处理连续笔画，事件传播顺序及 `consume()` 避免绘画手势同时滚动编辑页。
 - [Compose 多点触控](https://developer.android.com/develop/ui/compose/touch-input/pointer-input/multi-touch) 与 [AndroidX 手势实现](https://github.com/androidx/androidx/blob/androidx-main/compose/foundation/foundation/src/commonMain/kotlin/androidx/compose/foundation/gestures/TransformGestureDetector.kt)（2026-10-18）：以持续按下的触点计算中心、平移和缩放，避免触点增减造成画布跳动；绘画与导航共用一次手势循环，双指接管时回滚本次临时笔迹。缩放和平移仅改变视图，保存与导出沿用原有白板坐标。
-- [SVG 2 笔画绘制](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty)（2026-10-18）：圆帽、圆角与单点笔画的表现；白板导出使用固定方形坐标，单点显式绘制为圆形。文件仍通过上述 Storage Access Framework 写入用户选择的 ZIP，不新增存储权限。
+- [SVG 2 笔画绘制](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty)（2026-10-18）：圆帽、圆角与单点笔画的表现；白板导出使用固定世界坐标，单点显式绘制为圆形。文件仍通过上述 Storage Access Framework 写入用户选择的 ZIP，不新增存储权限。
+- [SVG 2 viewBox](https://www.w3.org/TR/SVG2/coords.html#ViewBoxAttribute) 与 [kotlinx.serialization 严格字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html)（2026-10-19 纵向画布扩展复核）：画布、预览、SVG 背景及 viewBox 统一采用 `1000×2000`；JSON 不新增字段，坐标数值上限由应用验证，旧版本会拒绝超出其纵向范围的数据。
 
 WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹钟及通知权限的参考链接见 [提醒说明](reminders.md)。
 
@@ -32,3 +33,5 @@ WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹
 - [Android 自适应图标](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive)（2026-10-19 再次复核）：前景保留透明边距，以适应启动器形状裁切；背景为不透明底色，单色层沿用新图案的透明度，支持主题图标。
 
 - [WorkManager 周期请求](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work) 与 [ExistingPeriodicWorkPolicy.UPDATE](https://developer.android.com/reference/androidx/work/ExistingPeriodicWorkPolicy)（2026-10-19 再次复核）：周期最短 15 分钟；保存间隔时更新唯一周期任务，正在执行的任务继续，下次周期使用新的设置。系统省电与网络条件可能延迟执行。
+
+- [Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files)、[高效加载位图](https://developer.android.com/topic/performance/graphics/load-bitmap) 与 [AndroidX ExifInterface 1.4.2](https://developer.android.com/jetpack/androidx/releases/exifinterface#1.4.2)（2026-10-19 图片插入复核）：`OpenDocument` 限定 `image/*`，再按真实文件内容检查可解码性；后台用 `inJustDecodeBounds` 和 `inSampleSize` 加载有尺寸上限的预览，并用 AndroidX 组件按 EXIF 修正方向，兼容旧 Android。原文件沿用已有附件字段保存、加密同步和备份，Markdown ZIP 使用图片引用；不新增存储权限或同步字段。

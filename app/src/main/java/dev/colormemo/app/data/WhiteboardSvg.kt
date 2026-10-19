@@ -5,8 +5,10 @@ import dev.colormemo.core.model.WhiteboardBrush
 
 /** Matches the canvas geometry, layered translucent ink and marker caps. */
 internal fun whiteboardSvg(whiteboard: Whiteboard): String = buildString {
-    append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1000\" height=\"1000\" viewBox=\"0 0 1000 1000\">\n")
-    append("<title>白板</title>\n<rect width=\"1000\" height=\"1000\" fill=\"#ffffff\"/>\n")
+    val canvasWidth = Whiteboard.CANVAS_WIDTH.toInt()
+    val canvasHeight = Whiteboard.CANVAS_HEIGHT.toInt()
+    append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$canvasWidth\" height=\"$canvasHeight\" viewBox=\"0 0 $canvasWidth $canvasHeight\">\n")
+    append("<title>白板</title>\n<rect width=\"$canvasWidth\" height=\"$canvasHeight\" fill=\"#ffffff\"/>\n")
     whiteboard.strokes.forEach { stroke ->
         val first = stroke.points.firstOrNull() ?: return@forEach
         val color = "#" + (stroke.color and 0xffffffL).toString(16).padStart(6, '0')

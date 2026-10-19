@@ -4,11 +4,12 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
-/** Strokes use a fixed square so drawings remain stable across screen sizes. */
+/** Fixed world coordinates keep strokes stable across screen sizes. */
 @Serializable
 data class Whiteboard(val strokes: List<WhiteboardStroke> = emptyList()) {
     companion object {
-        const val CANVAS_SIZE: Float = 1000f
+        const val CANVAS_WIDTH: Float = 1000f
+        const val CANVAS_HEIGHT: Float = 2000f
         const val MAX_STROKES: Int = 500
         const val MAX_POINTS: Int = 6000
         const val MIN_STROKE_WIDTH: Float = 1f

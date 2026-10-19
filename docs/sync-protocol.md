@@ -104,7 +104,9 @@ AES-256-GCM
 }
 ```
 
-笔画按绘制顺序排列，坐标固定为 `0..1000` 的正方形空间，与显示尺寸无关；宽度为同一空间内的 `1..40`，颜色为不透明 ARGB 无符号值（JSON 以正整数表示）。点坐标与宽度必须为有限数值，每笔至少一个点，每块白板最多 500 笔、合计 6,000 点；默认细签字笔的单点显示为圆点，多点显示为圆帽、圆角折线。`{"strokes":[]}` 表示空白板，`whiteboard` 缺失或为 `null` 表示普通文字笔记。
+笔画按绘制顺序排列，坐标固定为横向 `0..1000`、纵向 `0..2000` 的长方形空间，与显示尺寸无关；宽度为同一空间内的 `1..40`，颜色为不透明 ARGB 无符号值（JSON 以正整数表示）。点坐标与宽度必须为有限数值，每笔至少一个点，每块白板最多 500 笔、合计 6,000 点；默认细签字笔的单点显示为圆点，多点显示为圆帽、圆角折线。`{"strokes":[]}` 表示空白板，`whiteboard` 缺失或为 `null` 表示普通文字笔记。
+
+2026-10-19 纵向扩展：旧的 `1000×1000` 笔迹保留原始坐标，在其下方增加空白区域，不拉伸、重写或迁移旧笔迹。JSON 字段、内部文档版本和加密信封保持不变，仅扩展纵坐标合法范围；旧客户端的坐标校验会拒绝包含 `y > 1000` 的同步快照或备份，因此使用下方新区域后，所有同步设备须更新到支持此范围的版本。卡片预览和 SVG 导出均采用 `1000×2000` 比例。此次复核了 [kotlinx.serialization 严格字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html) 与 [SVG 2 viewBox](https://www.w3.org/TR/SVG2/coords.html#ViewBoxAttribute)；数值范围仍由 `SyncJson.validateWhiteboard()` 在收发两端校验。
 
 白板扩展仍使用内部文档的 `schemaVersion: 1`。写出 JSON 时使用 `@EncodeDefault(NEVER)` 省略默认的 `whiteboard: null`，因此文字笔记的内部格式保持不变。旧客户端采用严格未知字段校验，会拒绝含白板的 JSON 备份，避免重写时丢弃笔画；所有同步设备均须升级到支持加密的版本。JSON 备份保留可编辑笔画；Markdown ZIP 导出同目录 SVG 及相对图片引用，不包含完整同步修订信息。
 
