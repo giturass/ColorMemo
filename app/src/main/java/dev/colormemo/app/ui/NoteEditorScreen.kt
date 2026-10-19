@@ -319,18 +319,18 @@ internal fun NoteEditorScreen(
                             Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
                                 IconToggleButton(checked = showPalette, onCheckedChange = { showPalette = it }, enabled = !saving) { Icon(Icons.Outlined.Palette, "选择卡片颜色") }
                                 IconButton(onClick = { showAttachments = true }, enabled = !saving) { Icon(Icons.Outlined.AttachFile, "附件") }
+                                IconButton(onClick = { showReminder = true }, enabled = !saving) { Icon(Icons.Outlined.NotificationsNone, "设置提醒") }
                             }
                             Box(Modifier.align(Alignment.Center)) {
                                 IconButton(onClick = { menuOpen = true }, enabled = !saving) { Icon(Icons.Outlined.MoreVert, "更多操作") }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                     ModifiedTimeLabel(note)
                                     HorizontalDivider()
-                                    DropdownMenuItem(text = { Text("设置提醒") }, leadingIcon = { Icon(Icons.Outlined.NotificationsNone, null) }, onClick = { menuOpen = false; showReminder = true })
                                     DropdownMenuItem(text = { Text(if (archived) "取消归档" else "归档") }, leadingIcon = { Icon(if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null) }, onClick = { menuOpen = false; archived = !archived })
-                                    DropdownMenuItem(text = { Text(if (whiteboard != null) "白板帮助" else "Markdown 帮助") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.HelpOutline, null) }, onClick = { menuOpen = false; showHelp = true })
                                     if (note != null) {
                                         DropdownMenuItem(text = { Text("移到回收站") }, leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) }, onClick = { menuOpen = false; showDeleteDialog = true })
                                     }
+                                    DropdownMenuItem(text = { Text(if (whiteboard != null) "白板帮助" else "Markdown 帮助") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.HelpOutline, null) }, onClick = { menuOpen = false; showHelp = true })
                                 }
                             }
                             Box(Modifier.align(Alignment.CenterEnd)) {
