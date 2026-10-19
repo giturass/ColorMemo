@@ -1,5 +1,6 @@
 package dev.colormemo.app.data
 
+import dev.colormemo.app.sync.SyncInterval
 import dev.colormemo.app.ui.MemoUiState
 import dev.colormemo.app.ui.SyncProviderUi
 import dev.colormemo.app.ui.SyncSettingsUi
@@ -39,12 +40,37 @@ class SyncPreferencesTest {
     }
 
     @Test
-    fun legacySyncIntervalSettingIsIgnoredAndNoLongerSaved() {
+    fun legacyIntervalAndSettingsWithoutAnIntervalRemainUsable() {
         val legacy = """{"enabled":true,"provider":"R2","syncIntervalMinutes":1440}"""
         val restored = SyncSettingsJson.decodeFromString<SyncPreferences>(legacy)
         assertEquals(true, restored.enabled)
         assertEquals("R2", restored.provider)
-        assertFalse(SyncSettingsJson.encodeToString(restored).contains("syncIntervalMinutes"))
+        assertEquals(1440L, restored.toUi().syncIntervalMinutes)
+        val saved = SyncSettingsJson.decodeFromString<SyncPreferences>(SyncSettingsJson.encodeToString(restored))
+        assertEquals(1440L, saved.syncIntervalMinutes)
+        val missing = SyncSettingsJson.decodeFromString<SyncPreferences>("""{"enabled":false}""")
+        assertEquals(15L, missing.syncIntervalMinutes)
+    }
+
+    @Test
+    fun selectedIntervalsSurviveSerializationEvenWhenAutomaticSyncIsDisabled() {
+        for (minutes in SyncInterval.choices) {
+            val ui = SyncSettingsUi(automaticSync = false, syncIntervalMinutes = minutes)
+            val encoded = SyncSettingsJson.encodeToString(SyncPreferences.fromUi(ui))
+            val restored = SyncSettingsJson.decodeFromString<SyncPreferences>(encoded).toUi()
+            assertEquals(minutes, restored.syncIntervalMinutes)
+            assertFalse(restored.automaticSync)
+        }
+    }
+
+    @Test
+    fun invalidStoredIntervalsAreConstrainedForUiAndScheduling() {
+        for ((stored, expected) in listOf(-1L to 15L, 0L to 15L, 14L to 15L, Long.MAX_VALUE to 1440L)) {
+            val preferences = SyncPreferences(syncIntervalMinutes = stored)
+            assertEquals(expected, preferences.toUi().syncIntervalMinutes)
+            assertEquals(expected, SyncPreferences.fromUi(SyncSettingsUi(syncIntervalMinutes = stored)).syncIntervalMinutes)
+            assertEquals(expected, SyncInterval.normalize(preferences.syncIntervalMinutes))
+        }
     }
 
     @Test

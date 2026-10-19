@@ -1,5 +1,6 @@
 package dev.colormemo.app.ui
 
+import dev.colormemo.app.sync.SyncInterval
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteAttachment
 import dev.colormemo.core.model.NoteColor
@@ -53,11 +54,12 @@ data class SyncSettingsUi(
     val sessionToken: String = "",
     val pathPrefix: String = "colormemo",
     val automaticSync: Boolean = true,
+    val syncIntervalMinutes: Long = SyncInterval.DEFAULT_MINUTES,
     val wifiOnly: Boolean = false,
     val encryptionKey: String = "",
 ) {
     override fun toString(): String = "SyncSettingsUi(enabled=$enabled, provider=$provider, " +
-        "automaticSync=$automaticSync, wifiOnly=$wifiOnly, " +
+        "automaticSync=$automaticSync, syncIntervalMinutes=$syncIntervalMinutes, wifiOnly=$wifiOnly, " +
         "credentials=[REDACTED], encryptionKey=[REDACTED])"
 }
 

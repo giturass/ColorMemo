@@ -30,3 +30,5 @@ WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹
 - 文件选择、附件打开、笔型序列化及 SVG 的依据见 [同步协议](sync-protocol.md) 中 2026-10-19 的文档记录。
 
 - [Android 自适应图标](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive)（2026-10-19 再次复核）：前景保留透明边距，以适应启动器形状裁切；背景为不透明底色，单色层沿用新图案的透明度，支持主题图标。
+
+- [WorkManager 周期请求](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work) 与 [ExistingPeriodicWorkPolicy.UPDATE](https://developer.android.com/reference/androidx/work/ExistingPeriodicWorkPolicy)（2026-10-19 再次复核）：周期最短 15 分钟；保存间隔时更新唯一周期任务，正在执行的任务继续，下次周期使用新的设置。系统省电与网络条件可能延迟执行。

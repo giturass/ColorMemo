@@ -47,7 +47,8 @@ class SyncCoordinator(private val repository: NoteRepository, private val settin
         if (value.enabled) engine(value)
         val previous = settings.settings.value
         settings.save(value)
-        if (previous.copy(enabled = value.enabled, automaticSync = value.automaticSync, wifiOnly = value.wifiOnly) != value) {
+        if (previous.copy(enabled = value.enabled, automaticSync = value.automaticSync,
+                syncIntervalMinutes = value.syncIntervalMinutes, wifiOnly = value.wifiOnly) != value) {
             settings.recordSync(0)
         }
         refreshStatus()

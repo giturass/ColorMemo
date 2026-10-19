@@ -22,7 +22,7 @@ class SyncWorkScheduler(context: Context) {
             return
         }
         val work = PeriodicWorkRequestBuilder<SyncWorker>(
-            PERIODIC_INTERVAL_MINUTES,
+            SyncInterval.normalize(settings.syncIntervalMinutes),
             TimeUnit.MINUTES,
         )
             .setConstraints(constraints(settings))
@@ -49,6 +49,5 @@ class SyncWorkScheduler(context: Context) {
     private companion object {
         const val PERIODIC = "colormemo-periodic-sync"
         const val AFTER_EDIT = "colormemo-after-edit-sync"
-        const val PERIODIC_INTERVAL_MINUTES = 15L
     }
 }
