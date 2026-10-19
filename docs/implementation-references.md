@@ -28,3 +28,5 @@ WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹
 - [Compose 滑动删除](https://developer.android.com/develop/ui/compose/touch-input/user-interactions/swipe-to-dismiss)：使用 `SwipeToDismissBox` 单向滑动，将卡片移入可恢复的回收站，多选时停用滑动。
 - [Markwon HTML](https://noties.io/Markwon/docs/v4/html/) 与 [4.6.2 UnderlineHandler](https://github.com/noties/Markwon/blob/v4.6.2/markwon-html/src/main/java/io/noties/markwon/html/tag/UnderlineHandler.java)：仅注册下划线处理器，渲染 `<u>…</u>`；不启用图片加载。
 - 文件选择、附件打开、笔型序列化及 SVG 的依据见 [同步协议](sync-protocol.md) 中 2026-10-19 的文档记录。
+
+- [Android 自适应图标](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive)（2026-10-19 再次复核）：前景保留透明边距，以适应启动器形状裁切；背景为不透明底色，单色层沿用新图案的透明度，支持主题图标。
