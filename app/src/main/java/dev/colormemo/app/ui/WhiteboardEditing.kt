@@ -1,6 +1,7 @@
 package dev.colormemo.app.ui
 
 import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
 import kotlin.math.abs
@@ -33,7 +34,8 @@ private fun WhiteboardStroke.intersectsEraser(
     radius: Float,
 ): Boolean {
     if (points.isEmpty()) return false
-    val reach = radius + width / 2f
+    // Square marker tips extend past the circular pen footprint at their corners.
+    val reach = radius + width / 2f * if (brush == WhiteboardBrush.MARKER) 1.414214f else 1f
     val distanceSquared = reach * reach
     if (points.size == 1) return pointSegmentDistanceSquared(points[0], start, end) <= distanceSquared
     for (index in 1 until points.size) {

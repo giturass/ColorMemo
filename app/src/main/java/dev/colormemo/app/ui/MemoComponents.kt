@@ -40,6 +40,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import dev.colormemo.app.ui.theme.containerColor
 import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.NoteColor
+import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.html.tag.UnderlineHandler
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
@@ -120,6 +122,7 @@ internal fun MarkdownPreview(markdown: String, modifier: Modifier = Modifier) {
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
     val markwon = remember(context) {
         Markwon.builder(context)
+            .usePlugin(HtmlPlugin.create().excludeDefaults(true).addHandler(UnderlineHandler()))
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TablePlugin.create(context))
             .usePlugin(TaskListPlugin.create(context))
@@ -139,7 +142,7 @@ internal fun MarkdownPreview(markdown: String, modifier: Modifier = Modifier) {
         update = { textView ->
             textView.setTextColor(foreground)
             textView.setLinkTextColor(linkColor)
-            // No image or HTML plugin: preview never fetches third-party image URLs.
+            // Only underline HTML tags are enabled; preview never fetches remote images.
             if (textView.tag != markdown) {
                 markwon.setMarkdown(textView, markdown)
                 textView.tag = markdown
@@ -160,7 +163,7 @@ internal fun formatReminder(timestamp: Long): String {
 
 internal fun formatModified(timestamp: Long): String =
     Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault())
-        .format(DateTimeFormatter.ofPattern("M月d日", Locale.SIMPLIFIED_CHINESE))
+        .format(DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm", Locale.SIMPLIFIED_CHINESE))
 
 internal fun markdownSummary(content: String): String = content.take(1_000)
     .replace(Regex("(?m)^\\s*[-*+] \\[ \\]\\s*"), "☐ ")
@@ -171,4 +174,5 @@ internal fun markdownSummary(content: String): String = content.take(1_000)
     .replace("**", "")
     .replace("__", "")
     .replace("~~", "")
+    .replace(Regex("(?i)</?u>"), "")
     .trim()

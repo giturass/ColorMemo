@@ -33,6 +33,8 @@ data class Note(
     val conflictRevision: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val whiteboard: Whiteboard? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val attachments: List<NoteAttachment> = emptyList(),
 ) {
     /** Call after copy(...), using the revision of the note on which the edit was based. */
     fun edited(
@@ -47,6 +49,7 @@ data class Note(
             title = if (isPurged) "" else title,
             content = if (isPurged) "" else content,
             whiteboard = if (isPurged) null else whiteboard,
+            attachments = if (isPurged) emptyList() else attachments,
             deletedAt = if (isPurged) deletedAt ?: editedAt else deletedAt,
             reminderAt = if (isPurged || deletedAt != null) null else reminderAt,
             updatedAt = editedAt,

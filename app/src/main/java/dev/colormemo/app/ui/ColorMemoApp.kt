@@ -38,7 +38,7 @@ internal enum class MemoSection(val label: String) {
 private val SnapshotJson = Json { ignoreUnknownKeys = true }
 private val NoteSnapshotSaver = Saver<Note?, String>(
     // Draft fields are saved separately. Keep only the concurrency baseline here.
-    save = { note -> note?.let { SnapshotJson.encodeToString(it.copy(title = "", content = "", whiteboard = null)) } ?: "" },
+    save = { note -> note?.let { SnapshotJson.encodeToString(it.copy(title = "", content = "", whiteboard = null, attachments = emptyList())) } ?: "" },
     restore = { value -> value.takeIf(String::isNotEmpty)?.let { SnapshotJson.decodeFromString<Note>(it) } },
 )
 

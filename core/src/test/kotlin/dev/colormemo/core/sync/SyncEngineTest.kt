@@ -1,6 +1,7 @@
 package dev.colormemo.core.sync
 
 import dev.colormemo.core.model.Note
+import dev.colormemo.core.model.NoteAttachment
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -56,6 +57,24 @@ class SyncEngineTest {
         assertEquals("\"remote-etag\"", put.getHeader("If-Match"))
         assertNull(put.getHeader("If-None-Match"))
         assertEquals(result.notes, EncryptedSyncJson.decode(put.body.readByteArray(), encryptionKey).notes)
+    }
+
+    @Test
+    fun anotherDeviceDownloadsTheCompleteEncryptedAttachment() = runBlocking {
+        val file = NoteAttachment.create("secret-attachment.bin", "application/octet-stream", ByteArray(4096) { it.toByte() })
+        val source = base.copy(attachments = listOf(file))
+        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse().setResponseCode(201))
+        dav().sync(listOf(source))
+        request()
+        val uploaded = request().body.readByteArray()
+        assertFalse(uploaded.toString(Charsets.UTF_8).contains(file.fileName))
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("ETag", "\"attachment-v1\"").setBody(Buffer().write(uploaded)))
+        val downloaded = dav().sync(emptyList())
+        assertEquals(listOf(source), downloaded.notes)
+        assertEquals(file, downloaded.notes.single().attachments.single())
+        assertEquals("GET", request().method)
+        assertEquals(3, server.requestCount)
     }
 
     @Test

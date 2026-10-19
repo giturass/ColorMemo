@@ -1,6 +1,8 @@
 package dev.colormemo.app.data
 
 import dev.colormemo.core.model.Note
+import dev.colormemo.core.model.NoteAttachment
+import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
@@ -68,4 +70,48 @@ class MarkdownArchiveTest {
         assertTrue(entries.getValue("archive/0003-_草图 _一_.md").contains("![白板](<0003-_草图 _一_.svg>)"))
         assertTrue(entries.getValue("archive/0003-_草图 _一_.svg").contains("<svg"))
     }
+    @Test
+    fun svgPreservesWatercolorLayersAndSquareMarkerTips() {
+        val board = Whiteboard(listOf(
+            WhiteboardStroke(points = listOf(WhiteboardPoint(10f, 20f)), width = 40f, brush = WhiteboardBrush.WATERCOLOR),
+            WhiteboardStroke(points = listOf(WhiteboardPoint(50f, 60f)), width = 24f, brush = WhiteboardBrush.MARKER),
+            WhiteboardStroke(points = listOf(WhiteboardPoint(0f, 0f), WhiteboardPoint(100f, 100f)), brush = WhiteboardBrush.MARKER),
+        ))
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(whiteboardSvg(board).byteInputStream())
+        assertEquals(3, document.getElementsByTagName("circle").length)
+        val outer = document.getElementsByTagName("circle").item(0) as Element
+        assertEquals("20.0", outer.getAttribute("r"))
+        assertEquals("0.12", outer.getAttribute("fill-opacity"))
+        val marker = document.getElementsByTagName("rect").item(1) as Element
+        assertEquals("38.0", marker.getAttribute("x"))
+        assertEquals("48.0", marker.getAttribute("y"))
+        assertEquals("24.0", marker.getAttribute("width"))
+        assertEquals("0.7", marker.getAttribute("fill-opacity"))
+        val path = document.getElementsByTagName("path").item(0) as Element
+        assertEquals("square", path.getAttribute("stroke-linecap"))
+        assertEquals("bevel", path.getAttribute("stroke-linejoin"))
+    }
+
+    @Test
+    fun zipContainsExactAttachmentBytesWithPortableSafeRelativeLinks() {
+        val bytes = ByteArray(256) { it.toByte() }
+        val attachment = NoteAttachment.create("../照片[1].bin", "application/octet-stream", bytes)
+        val note = Note(id = "attachment", title = "附件笔记", attachments = listOf(attachment))
+        val output = ByteArrayOutputStream()
+        writeMarkdownArchive(listOf(note), output)
+        val entries = linkedMapOf<String, ByteArray>()
+        ZipInputStream(output.toByteArray().inputStream()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries[entry.name] = zip.readBytes()
+            }
+        }
+        assertEquals(2, entries.size)
+        assertFalse(entries.keys.any { it.contains("../") || it.startsWith("/") })
+        val filePath = entries.keys.single { it.endsWith(".bin") }
+        org.junit.Assert.assertArrayEquals(bytes, entries.getValue(filePath))
+        val markdown = entries.getValue("notes/0001-附件笔记.md").toString(Charsets.UTF_8)
+        assertTrue(markdown.contains("](<${filePath.removePrefix("notes/")}>)"))
+    }
+
 }

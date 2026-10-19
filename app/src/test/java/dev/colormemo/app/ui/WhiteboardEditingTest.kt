@@ -1,6 +1,7 @@
 package dev.colormemo.app.ui
 
 import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
 import org.junit.Assert.assertEquals
@@ -68,6 +69,13 @@ class WhiteboardEditingTest {
     fun pointSamplingUsesEuclideanDistance() {
         assertFalse(point(1f, 1f).isFarEnoughFrom(point(0f, 0f), 2.5f))
         assertTrue(point(1.5f, 2f).isFarEnoughFrom(point(0f, 0f), 2.5f))
+    }
+
+    @Test
+    fun eraserCanReachTheVisibleCornerOfASquareMarkerDot() {
+        val dot = WhiteboardStroke(width = 40f, points = listOf(point(500f, 500f)), brush = WhiteboardBrush.MARKER)
+        val board = Whiteboard(listOf(dot))
+        assertTrue(board.eraseBetween(point(519f, 519f), point(519f, 519f), 0.5f).strokes.isEmpty())
     }
 
     private fun point(x: Float, y: Float) = WhiteboardPoint(x, y)

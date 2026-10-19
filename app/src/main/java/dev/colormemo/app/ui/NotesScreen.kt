@@ -1,5 +1,7 @@
 package dev.colormemo.app.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -23,6 +25,8 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Check
@@ -45,6 +49,10 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.ViewAgenda
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -68,6 +76,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +86,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -144,17 +161,28 @@ internal fun NotesScreen(
     var compactGrid by rememberSaveable { mutableStateOf(true) }
     var colorFilter by rememberSaveable { mutableStateOf<NoteColor?>(null) }
     var colorMenu by remember { mutableStateOf(false) }
-    var deleteTarget by remember { mutableStateOf<Note?>(null) }
+    var deleteTargets by remember { mutableStateOf(emptyList<Note>()) }
+    var selectedIds by rememberSaveable(section) { mutableStateOf(emptyList<String>()) }
+    var selectionMenu by remember { mutableStateOf(false) }
     val visible = remember(state.notes, section, query, pinnedOnly, colorFilter) {
         state.notes.filter { note ->
             note.inSection(section) && (!pinnedOnly || note.isPinned) &&
                 (colorFilter == null || note.color == colorFilter) &&
-                (query.isBlank() || note.title.contains(query, ignoreCase = true) || note.content.contains(query, ignoreCase = true))
+                (query.isBlank() || note.title.contains(query, ignoreCase = true) || note.content.contains(query, ignoreCase = true) ||
+                    note.attachments.any { it.fileName.contains(query, ignoreCase = true) })
         }.sortedWith(
             if (section == MemoSection.REMINDERS) compareBy<Note> { it.reminderAt }.thenByDescending { it.updatedAt }
             else compareByDescending<Note> { it.isPinned }.thenByDescending { it.updatedAt },
         )
     }
+    val selectedNotes = visible.filter { it.id in selectedIds }
+    val selecting = selectedNotes.isNotEmpty()
+    LaunchedEffect(visible) { selectedIds = selectedIds.filter { id -> visible.any { it.id == id } } }
+    BackHandler(enabled = selecting) { selectedIds = emptyList() }
+    fun toggleSelection(note: Note) {
+        selectedIds = if (note.id in selectedIds) selectedIds - note.id else selectedIds + note.id
+    }
+    val onCardClick: (Note) -> Unit = { if (selecting) toggleSelection(it) else onOpenNote(it) }
     val pinned = visible.filter(Note::isPinned)
     val others = visible.filterNot(Note::isPinned)
 
@@ -162,7 +190,9 @@ internal fun NotesScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    if (searchActive) {
+                    if (selecting) {
+                        Text("已选 ${selectedNotes.size} 条", style = MaterialTheme.typography.titleMedium)
+                    } else if (searchActive) {
                         NotesSearchField(
                             query = query,
                             onQueryChange = { query = it },
@@ -176,29 +206,65 @@ internal fun NotesScreen(
                         }
                     }
                 },
-                navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Outlined.Menu, "打开导航") } },
+                navigationIcon = {
+                    IconButton(onClick = { if (selecting) selectedIds = emptyList() else onOpenDrawer() }) {
+                        Icon(if (selecting) Icons.Outlined.Close else Icons.Outlined.Menu, if (selecting) "退出多选" else "打开导航")
+                    }
+                },
                 actions = {
-                    IconButton(
-                        onClick = {
-                            if (searchActive) {
-                                query = ""
-                                searchActive = false
-                            } else {
-                                searchActive = true
+                    if (selecting) {
+                        IconButton(onClick = { selectedIds = if (selectedNotes.size == visible.size) emptyList() else visible.map { it.id } }) {
+                            Icon(Icons.Outlined.SelectAll, if (selectedNotes.size == visible.size) "取消全选" else "全选")
+                        }
+                        IconButton(onClick = {
+                            if (section == MemoSection.TRASH) deleteTargets = selectedNotes
+                            else { selectedNotes.forEach { callbacks.onTrash(it.id) }; selectedIds = emptyList() }
+                        }) {
+                            Icon(if (section == MemoSection.TRASH) Icons.Outlined.DeleteForever else Icons.Outlined.DeleteOutline,
+                                if (section == MemoSection.TRASH) "彻底删除所选便笺" else "将所选便笺移到回收站")
+                        }
+                        Box {
+                            IconButton(onClick = { selectionMenu = true }) { Icon(Icons.Outlined.MoreVert, "所选便笺操作") }
+                            DropdownMenu(expanded = selectionMenu, onDismissRequest = { selectionMenu = false }) {
+                                if (section == MemoSection.TRASH) {
+                                    DropdownMenuItem(text = { Text("恢复所选便笺") }, leadingIcon = { Icon(Icons.Outlined.RestoreFromTrash, null) }, onClick = {
+                                        selectedNotes.forEach { callbacks.onRestore(it.id) }; selectedIds = emptyList(); selectionMenu = false
+                                    })
+                                } else {
+                                    val allPinned = selectedNotes.all { it.isPinned }
+                                    val allArchived = selectedNotes.all { it.isArchived }
+                                    DropdownMenuItem(text = { Text(if (allPinned) "取消置顶" else "置顶") }, leadingIcon = { Icon(Icons.Outlined.PushPin, null) }, onClick = {
+                                        selectedNotes.forEach { callbacks.onSetPinned(it.id, !allPinned) }; selectedIds = emptyList(); selectionMenu = false
+                                    })
+                                    DropdownMenuItem(text = { Text(if (allArchived) "取消归档" else "归档") }, leadingIcon = { Icon(if (allArchived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null) }, onClick = {
+                                        selectedNotes.forEach { callbacks.onSetArchived(it.id, !allArchived) }; selectedIds = emptyList(); selectionMenu = false
+                                    })
+                                }
                             }
-                        },
-                    ) {
-                        Icon(
-                            if (searchActive) Icons.Outlined.Close else Icons.Outlined.Search,
-                            if (searchActive) "关闭搜索" else "搜索",
-                        )
+                        }
+                    } else {
+                        IconButton(
+                            onClick = {
+                                if (searchActive) {
+                                    query = ""
+                                    searchActive = false
+                                } else {
+                                    searchActive = true
+                                }
+                            },
+                        ) {
+                            Icon(
+                                if (searchActive) Icons.Outlined.Close else Icons.Outlined.Search,
+                                if (searchActive) "关闭搜索" else "搜索",
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
         floatingActionButton = {
-            if (section != MemoSection.TRASH) {
+            if (section != MemoSection.TRASH && !selecting) {
                 ExtendedFloatingActionButton(
                     onClick = { if (section == MemoSection.WHITEBOARDS) onCreateWhiteboard() else onOpenNote(null) },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -324,7 +390,7 @@ internal fun NotesScreen(
                     if (pinned.isNotEmpty() && section != MemoSection.REMINDERS) {
                         item(key = "pinned-header", span = StaggeredGridItemSpan.FullLine) { NoteGroupLabel("置顶") }
                         items(pinned, key = { "note:${it.id}" }) { note ->
-                            MemoCard(note, onOpenNote, callbacks, onDeleteForever = { deleteTarget = it })
+                            MemoCard(note, selecting, note.id in selectedIds, onClick = { onCardClick(note) }, onLongClick = { toggleSelection(note) }, onTrash = { callbacks.onTrash(note.id) })
                         }
                     }
                     if (others.isNotEmpty() || section == MemoSection.REMINDERS) {
@@ -332,24 +398,24 @@ internal fun NotesScreen(
                             item(key = "others-header", span = StaggeredGridItemSpan.FullLine) { NoteGroupLabel("其他便笺") }
                         }
                         items(if (section == MemoSection.REMINDERS) visible else others, key = { "note:${it.id}" }) { note ->
-                            MemoCard(note, onOpenNote, callbacks, onDeleteForever = { deleteTarget = it })
+                            MemoCard(note, selecting, note.id in selectedIds, onClick = { onCardClick(note) }, onLongClick = { toggleSelection(note) }, onTrash = { callbacks.onTrash(note.id) })
                         }
                     }
                 }
             }
         }
     }
-    deleteTarget?.let { note ->
+    if (deleteTargets.isNotEmpty()) {
         AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("彻底删除这条便笺？") },
+            onDismissRequest = { deleteTargets = emptyList() },
+            title = { Text("彻底删除这 ${deleteTargets.size} 条便笺？") },
             text = { Text("内容将从本机移除，并在下一次同步时从其他设备移除。此操作无法恢复。") },
             confirmButton = {
-                TextButton(onClick = { callbacks.onDeleteForever(note.id); deleteTarget = null }) {
+                TextButton(onClick = { deleteTargets.forEach { callbacks.onDeleteForever(it.id) }; deleteTargets = emptyList(); selectedIds = emptyList() }) {
                     Text("彻底删除", color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { deleteTargets = emptyList() }) { Text("取消") } },
         )
     }
 }
@@ -390,97 +456,98 @@ private fun NotesSearchField(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MemoCard(
     note: Note,
-    onOpen: (Note?) -> Unit,
-    callbacks: MemoCallbacks,
-    onDeleteForever: (Note) -> Unit,
+    selecting: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onTrash: () -> Unit,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
     val summary = remember(note.content) { markdownSummary(note.content) }
-    Card(
-        onClick = { onOpen(note) },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = note.color.containerColor()),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
-            note.whiteboard?.let { board ->
-                WhiteboardPreview(board, Modifier.fillMaxWidth().padding(bottom = 12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Outlined.Draw, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("白板", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.height(6.dp))
-            }
-            if (note.title.isNotBlank()) {
-                Text(note.title, style = MaterialTheme.typography.titleMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
-                if (summary.isNotEmpty()) Spacer(Modifier.height(8.dp))
-            }
-            if (summary.isNotEmpty()) {
-                Text(summary, style = MaterialTheme.typography.bodyMedium, maxLines = 11, overflow = TextOverflow.Ellipsis)
-            } else if (note.title.isBlank() && note.whiteboard == null) {
-                Text("空白便笺", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            note.reminderAt?.let { reminder ->
-                Surface(
-                    modifier = Modifier.padding(top = 12.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
-                ) {
-                    Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.NotificationsNone, null, Modifier.size(13.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(formatReminder(reminder), style = MaterialTheme.typography.labelSmall, maxLines = 2)
-                    }
-                }
-            }
-            if (note.conflictOf != null) {
-                Text("保留了另一份修改", modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+    val canSwipe = !selecting && note.deletedAt == null
+    val latestOnTrash by rememberUpdatedState(onTrash)
+    val leftDirection = if (LocalLayoutDirection.current == LayoutDirection.Ltr) SwipeToDismissBoxValue.EndToStart else SwipeToDismissBoxValue.StartToEnd
+    val swipe = rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.45f })
+    LaunchedEffect(swipe.currentValue) {
+        if (swipe.currentValue == leftDirection) {
+            if (canSwipe) latestOnTrash()
+            swipe.reset()
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    }
+    LaunchedEffect(canSwipe) { if (!canSwipe) swipe.reset() }
+    SwipeToDismissBox(
+        state = swipe,
+        enableDismissFromStartToEnd = canSwipe && leftDirection == SwipeToDismissBoxValue.StartToEnd,
+        enableDismissFromEndToStart = canSwipe && leftDirection == SwipeToDismissBoxValue.EndToStart,
+        backgroundContent = {
+            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.errorContainer).padding(16.dp),
+                contentAlignment = Alignment.CenterEnd) {
+                Icon(Icons.Outlined.DeleteOutline, "移到回收站", tint = MaterialTheme.colorScheme.onErrorContainer)
+            }
+        },
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = note.color.containerColor()),
+            border = BorderStroke(if (isSelected) 2.dp else 1.dp,
+                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "选择便笺")
+                .semantics {
+                    selected = isSelected
+                    if (canSwipe) customActions = listOf(CustomAccessibilityAction("移到回收站") { onTrash(); true })
+                },
         ) {
-            Text(formatModified(note.updatedAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
-            if (note.isPinned) Icon(Icons.Outlined.PushPin, "已置顶", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Box {
-                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Outlined.MoreVert, "便笺操作", Modifier.size(18.dp))
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    if (note.deletedAt != null) {
-                        DropdownMenuItem(
-                            text = { Text("恢复便笺") },
-                            leadingIcon = { Icon(Icons.Outlined.RestoreFromTrash, null) },
-                            onClick = { menuOpen = false; callbacks.onRestore(note.id) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("彻底删除") },
-                            leadingIcon = { Icon(Icons.Outlined.DeleteForever, null) },
-                            onClick = { menuOpen = false; onDeleteForever(note) },
-                        )
-                    } else {
-                        DropdownMenuItem(
-                            text = { Text(if (note.isPinned) "取消置顶" else "置顶") },
-                            leadingIcon = { Icon(Icons.Outlined.PushPin, null) },
-                            onClick = { menuOpen = false; callbacks.onSetPinned(note.id, !note.isPinned) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(if (note.isArchived) "取消归档" else "归档") },
-                            leadingIcon = { Icon(if (note.isArchived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null) },
-                            onClick = { menuOpen = false; callbacks.onSetArchived(note.id, !note.isArchived) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("移到回收站") },
-                            leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) },
-                            onClick = { menuOpen = false; callbacks.onTrash(note.id) },
-                        )
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)) {
+                if (selecting || note.isPinned) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        if (selecting) Checkbox(checked = isSelected, onCheckedChange = null, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.weight(1f))
+                        if (note.isPinned) Icon(Icons.Outlined.PushPin, "已置顶", Modifier.size(16.dp))
                     }
+                    Spacer(Modifier.height(8.dp))
+                }
+                note.whiteboard?.let { board ->
+                    WhiteboardPreview(board, Modifier.fillMaxWidth().padding(bottom = 12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Outlined.Draw, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("白板", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+                if (note.title.isNotBlank()) {
+                    Text(note.title, style = MaterialTheme.typography.titleMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    if (summary.isNotEmpty()) Spacer(Modifier.height(8.dp))
+                }
+                if (summary.isNotEmpty()) {
+                    Text(summary, style = MaterialTheme.typography.bodyMedium, maxLines = 11, overflow = TextOverflow.Ellipsis)
+                } else if (note.title.isBlank() && note.whiteboard == null) {
+                    Text(note.attachments.firstOrNull()?.fileName ?: "空白便笺", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+                note.reminderAt?.let { reminder ->
+                    Surface(
+                        modifier = Modifier.padding(top = 12.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                    ) {
+                        Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.NotificationsNone, null, Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(formatReminder(reminder), style = MaterialTheme.typography.labelSmall, maxLines = 2)
+                        }
+                    }
+                }
+                if (note.attachments.isNotEmpty()) {
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Outlined.AttachFile, null, Modifier.size(14.dp))
+                        Text("${note.attachments.size} 个附件", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                if (note.conflictOf != null) {
+                    Text("保留了另一份修改", modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

@@ -16,13 +16,27 @@ internal fun writeMarkdownArchive(notes: List<Note>, output: OutputStream) {
                 .trim(' ', '.').take(64).ifBlank { "note" }
             val basename = "${(index + 1).toString().padStart(4, '0')}-$safeName"
             val folder = if (note.isArchived) "archive/" else "notes/"
+            val attachmentNames = note.attachments.mapIndexed { attachmentIndex, attachment ->
+                val safeFile = attachment.fileName.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_")
+                    .trim(' ', '.').take(100).ifBlank { "attachment" }
+                "$basename-attachments/${attachmentIndex + 1}-$safeFile"
+            }
             val markdown = buildString {
                 if (note.title.isNotBlank()) append("# ").append(note.title.replace('\n', ' ')).append("\n\n")
                 append(note.content)
                 if (!endsWith("\n")) append('\n')
                 if (note.whiteboard != null) append("\n![白板](<").append(basename).append(".svg>)\n")
+                note.attachments.forEachIndexed { attachmentIndex, attachment ->
+                    val label = attachment.fileName.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+                    append("\n[").append(label).append("](<").append(attachmentNames[attachmentIndex]).append(">)\n")
+                }
             }
             zip.writeTextEntry("$folder$basename.md", markdown)
+            note.attachments.forEachIndexed { attachmentIndex, attachment ->
+                zip.putNextEntry(ZipEntry(folder + attachmentNames[attachmentIndex]))
+                zip.write(attachment.bytes())
+                zip.closeEntry()
+            }
             note.whiteboard?.let { whiteboard ->
                 zip.writeTextEntry("$folder$basename.svg", whiteboardSvg(whiteboard))
             }

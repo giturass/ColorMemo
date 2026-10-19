@@ -1,6 +1,7 @@
 package dev.colormemo.app.ui
 
 import dev.colormemo.core.model.Note
+import dev.colormemo.core.model.NoteAttachment
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.model.Whiteboard
 
@@ -28,6 +29,7 @@ data class NoteDraft(
     val reminderAt: Long? = null,
     val newNoteId: String? = null,
     val whiteboard: Whiteboard? = null,
+    val attachments: List<NoteAttachment> = emptyList(),
 ) {
     val id: String? get() = baseNote?.id ?: newNoteId
 }

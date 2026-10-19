@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,12 +27,14 @@ import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -61,6 +64,10 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.painterResource
+import dev.colormemo.app.R
+import dev.colormemo.app.data.inkLayers
+import dev.colormemo.core.model.WhiteboardBrush
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
@@ -77,7 +84,7 @@ import kotlin.math.roundToInt
 private const val HISTORY_LIMIT = 25
 private const val ERASER_RADIUS = 28f
 
-private enum class WhiteboardTool { PEN, ERASER, MOVE }
+private enum class WhiteboardTool { PEN, ERASER }
 
 private val ViewportSaver = listSaver<WhiteboardViewport, Float>(
     save = { listOf(it.centerX, it.centerY, it.zoom) },
@@ -105,7 +112,8 @@ internal fun WhiteboardEditor(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var ink by rememberSaveable { mutableStateOf(inkColors.first().first) }
-    var lineWidth by rememberSaveable { mutableStateOf(6f) }
+    var lineWidth by rememberSaveable { mutableStateOf(3f) }
+    var brush by rememberSaveable { mutableStateOf(WhiteboardBrush.FINELINER) }
     var tool by rememberSaveable { mutableStateOf(WhiteboardTool.PEN) }
     var showBrushSettings by rememberSaveable { mutableStateOf(false) }
     var viewport by rememberSaveable(stateSaver = ViewportSaver) { mutableStateOf(WhiteboardViewport()) }
@@ -153,9 +161,12 @@ internal fun WhiteboardEditor(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                FilterChip(selected = tool == WhiteboardTool.PEN, onClick = { tool = WhiteboardTool.PEN }, enabled = controlsEnabled, label = { Text("画笔") })
-                FilterChip(selected = erasing, onClick = { tool = WhiteboardTool.ERASER }, enabled = controlsEnabled, label = { Text("橡皮") })
-                FilterChip(selected = tool == WhiteboardTool.MOVE, onClick = { tool = WhiteboardTool.MOVE }, enabled = controlsEnabled, label = { Text("移动") })
+                IconToggleButton(checked = !erasing, onCheckedChange = { tool = WhiteboardTool.PEN }, enabled = controlsEnabled) {
+                    Icon(Icons.Outlined.Draw, "画笔")
+                }
+                IconToggleButton(checked = erasing, onCheckedChange = { tool = WhiteboardTool.ERASER }, enabled = controlsEnabled) {
+                    Icon(painterResource(R.drawable.ic_eraser), "橡皮")
+                }
                 IconButton(
                     onClick = {
                         val previous = undoBoards.last()
@@ -176,7 +187,7 @@ internal fun WhiteboardEditor(
                     enabled = controlsEnabled && redoBoards.isNotEmpty(),
                 ) { Icon(Icons.AutoMirrored.Outlined.Redo, "重做白板操作") }
                 IconButton(onClick = { showBrushSettings = true }, enabled = controlsEnabled) {
-                    Icon(Icons.Outlined.Tune, "画笔颜色与粗细")
+                    Icon(Icons.Outlined.Tune, "画笔类型、颜色与粗细")
                 }
                 IconButton(
                     onClick = { showClearDialog = true },
@@ -201,22 +212,21 @@ internal fun WhiteboardEditor(
                     .semantics {
                         contentDescription = when {
                             readOnly -> "白板预览，可拖动和双指缩放"
-                            tool == WhiteboardTool.MOVE -> "白板画布，单指拖动，双指缩放"
                             else -> "白板画布，单指绘画或擦除，双指拖动和缩放"
                         }
                     }
-                    .pointerInput(readOnly, ink, lineWidth, tool, canvasSize) {
+                    .pointerInput(readOnly, ink, lineWidth, brush, tool, canvasSize) {
                         awaitEachGesture {
                             val down = awaitFirstDown(pass = PointerEventPass.Initial)
                             val width = size.width.toFloat()
                             val height = size.height.toFloat()
                             if (width <= 0f || height <= 0f) return@awaitEachGesture
-                            val singleFingerNavigation = readOnly || tool == WhiteboardTool.MOVE
+                            val singleFingerNavigation = readOnly
                             var navigating = singleFingerNavigation || currentEvent.changes.count { it.pressed } > 1
                             currentEvent.changes.forEach { it.consume() }
                             focusManager.clearFocus(force = true)
                             keyboardController?.hide()
-                            val gesture = WhiteboardGestureSession(currentBoard, erasing, ink, lineWidth)
+                            val gesture = WhiteboardGestureSession(currentBoard, erasing, ink, lineWidth, brush)
                             // A stroke keeps one transform; navigation takes over for the rest
                             // of this touch sequence as soon as another finger arrives.
                             val transform = viewport.transform(width, height)
@@ -357,7 +367,6 @@ internal fun WhiteboardEditor(
                 when (tool) {
                     WhiteboardTool.PEN -> "单指绘画 · 双指移动和缩放"
                     WhiteboardTool.ERASER -> "单指擦除整笔 · 双指移动和缩放"
-                    WhiteboardTool.MOVE -> "单指移动 · 双指缩放 · 点击画笔继续绘画"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -372,6 +381,24 @@ internal fun WhiteboardEditor(
             title = { Text("画笔设置") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("笔型", style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        WhiteboardBrush.entries.forEach { type ->
+                            FilterChip(
+                                selected = brush == type,
+                                onClick = {
+                                    brush = type
+                                    lineWidth = when (type) {
+                                        WhiteboardBrush.FINELINER -> 3f
+                                        WhiteboardBrush.WATERCOLOR -> 24f
+                                        WhiteboardBrush.MARKER -> 16f
+                                    }
+                                    tool = WhiteboardTool.PEN
+                                },
+                                label = { Text(type.displayName) },
+                            )
+                        }
+                    }
                     Text("颜色", style = MaterialTheme.typography.labelLarge)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                         inkColors.forEach { (color, label) ->
@@ -389,20 +416,32 @@ internal fun WhiteboardEditor(
                             }
                         }
                     }
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("线宽", style = MaterialTheme.typography.labelLarge)
-                        listOf(3f to "细", 6f to "中", 14f to "粗").forEach { (width, label) ->
-                            FilterChip(
-                                selected = lineWidth == width,
-                                onClick = { lineWidth = width; tool = WhiteboardTool.PEN },
-                                label = { Text(label) },
-                                modifier = Modifier.semantics { contentDescription = "${label}画笔线宽" },
-                            )
+                    Text("笔触粗细", style = MaterialTheme.typography.labelLarge)
+                    listOf(1f, 3f, 6f, 10f, 16f, 24f, 32f, 40f).chunked(4).forEachIndexed { rowIndex, widths ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            widths.forEachIndexed { columnIndex, width ->
+                                val selected = lineWidth == width
+                                Box(
+                                    Modifier.size(52.dp).clip(CircleShape)
+                                        .selectable(selected, role = Role.RadioButton, onClick = { lineWidth = width; tool = WhiteboardTool.PEN })
+                                        .semantics { contentDescription = "粗细第${rowIndex * 4 + columnIndex + 1}档，共8档" }
+                                        .padding(3.dp)
+                                        .border(if (selected) 2.dp else 0.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Box(Modifier.size((4f + width * 0.7f).dp).background(MaterialTheme.colorScheme.onSurface, CircleShape))
+                                }
+                            }
                         }
+                    }
+                    Canvas(Modifier.fillMaxWidth().height(64.dp).clip(MaterialTheme.shapes.small).background(Color.White)) {
+                        val sample = Whiteboard(listOf(dev.colormemo.core.model.WhiteboardStroke(
+                            color = ink, width = lineWidth,
+                            points = listOf(WhiteboardPoint(100f, 500f), WhiteboardPoint(500f, 450f), WhiteboardPoint(900f, 500f)),
+                            brush = brush,
+                        )))
+                        val scale = size.width / Whiteboard.CANVAS_SIZE
+                        drawWhiteboard(sample, scale, Offset(0f, size.height / 2f - 475f * scale))
                     }
                 }
             },
@@ -450,19 +489,34 @@ private fun DrawScope.drawWhiteboard(
 ) {
     whiteboard.strokes.forEach { stroke ->
         val first = stroke.points.firstOrNull() ?: return@forEach
-        val color = Color(stroke.color)
-        val width = stroke.width * scale
-        if (stroke.points.size == 1) {
-            drawCircle(color, width / 2f, origin + Offset(first.x * scale, first.y * scale))
-        } else {
-            val path = Path().apply {
-                moveTo(origin.x + first.x * scale, origin.y + first.y * scale)
-                for (index in 1 until stroke.points.size) {
-                    val point = stroke.points[index]
-                    lineTo(origin.x + point.x * scale, origin.y + point.y * scale)
-                }
+        val path = Path().apply {
+            moveTo(origin.x + first.x * scale, origin.y + first.y * scale)
+            for (index in 1 until stroke.points.size) {
+                val point = stroke.points[index]
+                lineTo(origin.x + point.x * scale, origin.y + point.y * scale)
             }
-            drawPath(path, color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
+        val marker = stroke.brush == WhiteboardBrush.MARKER
+        val isDot = stroke.points.all { it == first }
+        stroke.brush.inkLayers.forEach { layer ->
+            val color = Color(stroke.color).copy(alpha = layer.opacity)
+            val width = stroke.width * scale * layer.widthScale
+            val center = origin + Offset(first.x * scale, first.y * scale)
+            if (isDot) {
+                if (marker) drawRect(color, center - Offset(width / 2f, width / 2f), Size(width, width))
+                else drawCircle(color, width / 2f, center)
+            } else {
+                drawPath(path, color, style = Stroke(width,
+                    cap = if (marker) StrokeCap.Square else StrokeCap.Round,
+                    join = if (marker) StrokeJoin.Bevel else StrokeJoin.Round))
+            }
         }
     }
 }
+
+private val WhiteboardBrush.displayName: String
+    get() = when (this) {
+        WhiteboardBrush.FINELINER -> "细签字笔"
+        WhiteboardBrush.WATERCOLOR -> "水彩笔"
+        WhiteboardBrush.MARKER -> "马克笔"
+    }

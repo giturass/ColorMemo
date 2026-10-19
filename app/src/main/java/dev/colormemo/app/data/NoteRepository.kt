@@ -5,6 +5,7 @@ import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.sync.MergeEngine
 import dev.colormemo.core.sync.SyncJson
+import dev.colormemo.core.sync.SyncDocument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -19,9 +20,10 @@ import java.util.UUID
 class NoteInputException(message: String) : IllegalArgumentException(message)
 
 /** All writers, including sync and imports, share this lock and a Room transaction. */
-class NoteRepository(
+class NoteRepository internal constructor(
     private val database: NoteDatabase,
     private val deviceId: String,
+    private val attachmentStore: AttachmentStore,
     private val onCommitted: () -> Unit = {},
 ) {
     private val dao = database.notes()
@@ -34,7 +36,7 @@ class NoteRepository(
     suspend fun save(draft: NoteDraft): Note = withContext(Dispatchers.IO) {
         checkInput(draft.title.length <= 500, "标题最多 500 个字符")
         checkInput(draft.content.length <= 100_000, "单条笔记最多 100,000 个字符")
-        checkInput(draft.title.isNotBlank() || draft.content.isNotBlank() ||
+        checkInput(draft.title.isNotBlank() || draft.content.isNotBlank() || draft.attachments.isNotEmpty() ||
             draft.whiteboard?.strokes?.isNotEmpty() == true || (draft.whiteboard != null && draft.baseNote != null),
             "先写下或画下一点内容再保存")
         val now = System.currentTimeMillis()
@@ -56,6 +58,7 @@ class NoteRepository(
                 isArchived = draft.isArchived,
                 reminderAt = draft.reminderAt,
                 whiteboard = draft.whiteboard,
+                attachments = draft.attachments,
             )
             if (draft.baseNote != null && candidate == base) return@withLock base
             val changed = candidate.edited(deviceId, now)
@@ -82,6 +85,7 @@ class NoteRepository(
             title = "",
             content = "",
             whiteboard = null,
+            attachments = emptyList(),
             color = NoteColor.DEFAULT,
             isPinned = false,
             isArchived = false,
@@ -111,6 +115,8 @@ class NoteRepository(
         database.runInTransaction {
             val current = dao.getAll().map(::decode)
             val result = MergeEngine.merge(current, incoming)
+            // Reject an unsyncable attachment addition before changing any rows.
+            if (result.notes.any { it.attachments.isNotEmpty() }) SyncJson.encode(SyncDocument(notes = result.notes))
             val byId = current.associateBy(Note::id)
             val changed = result.notes.filter { byId[it.id] != it }
             if (changed.isNotEmpty()) dao.upsert(changed.map(::encode))
@@ -119,12 +125,21 @@ class NoteRepository(
         return conflicts
     }
 
+    private fun decode(row: NoteEntity): Note = decodeMetadata(row).let { note ->
+        note.copy(attachments = note.attachments.map(attachmentStore::hydrate))
+    }
+
+    private fun encode(note: Note): NoteEntity {
+        note.attachments.forEach(attachmentStore::persist)
+        val metadata = note.copy(attachments = note.attachments.map { it.copy(dataBase64 = "") })
+        return NoteEntity(note.id, SyncJson.json.encodeToString(metadata))
+    }
+
     companion object {
         private fun checkInput(condition: Boolean, message: String) {
             if (!condition) throw NoteInputException(message)
         }
 
-        fun decode(row: NoteEntity): Note = SyncJson.json.decodeFromString(row.document)
-        fun encode(note: Note): NoteEntity = NoteEntity(note.id, SyncJson.json.encodeToString(note))
+        fun decodeMetadata(row: NoteEntity): Note = SyncJson.json.decodeFromString(row.document)
     }
 }

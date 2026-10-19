@@ -75,7 +75,7 @@ object MergeEngine {
             left.isPinned == right.isPinned && left.isArchived == right.isArchived &&
             (left.deletedAt != null) == (right.deletedAt != null) &&
             left.isPurged == right.isPurged && left.reminderAt == right.reminderAt &&
-            left.whiteboard == right.whiteboard
+            left.whiteboard == right.whiteboard && left.attachments == right.attachments
 
     private fun conflictCopy(note: Note): Note {
         val copyId = stableUuid("colormemo-conflict-v1:${note.id}:${note.revision}")

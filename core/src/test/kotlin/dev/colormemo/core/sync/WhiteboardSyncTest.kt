@@ -2,6 +2,7 @@ package dev.colormemo.core.sync
 
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
 import kotlinx.serialization.encodeToString
@@ -140,6 +141,18 @@ class WhiteboardSyncTest {
             assertThrows(SyncProtocolException::class.java) { SyncJson.validate(document) }
             assertThrows(SyncProtocolException::class.java) { SyncJson.decode(SyncJson.json.encodeToString(document)) }
         }
+    }
+
+    @Test
+    fun brushesRoundTripAndLegacyStrokesKeepTheirAppearance() {
+        val source = SyncDocument(notes = listOf(note.copy(whiteboard = Whiteboard(
+            WhiteboardBrush.entries.map { stroke.copy(brush = it, width = 40f) },
+        ))))
+        assertEquals(source, SyncJson.decode(SyncJson.encode(source)))
+        val legacy = SyncJson.encode(SyncDocument(notes = listOf(note.copy(whiteboard = board))))
+        org.junit.Assert.assertFalse(legacy.contains("brush"))
+        assertEquals(WhiteboardBrush.FINELINER, SyncJson.decode(legacy).notes.single().whiteboard!!.strokes.single().brush)
+        assertThrows(SyncProtocolException::class.java) { SyncJson.decode(SyncJson.encode(source).replace("WATERCOLOR", "UNKNOWN_BRUSH")) }
     }
 
     private fun assertRejected(drawing: Whiteboard) {

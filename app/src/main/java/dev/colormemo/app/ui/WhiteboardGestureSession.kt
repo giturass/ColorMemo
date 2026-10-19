@@ -1,6 +1,7 @@
 package dev.colormemo.app.ui
 
 import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
 
@@ -17,6 +18,7 @@ internal class WhiteboardGestureSession(
     private val erasing: Boolean,
     private val color: Long,
     private val width: Float,
+    private val brush: WhiteboardBrush = WhiteboardBrush.FINELINER,
 ) {
     var working: Whiteboard = before
         private set
@@ -46,6 +48,7 @@ internal class WhiteboardGestureSession(
                 color = color,
                 width = width,
                 points = listOf(point),
+                brush = brush,
             ))
             pointCount++
             strokeStarted = true

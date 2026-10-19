@@ -1,6 +1,7 @@
 package dev.colormemo.app.ui
 
 import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
 import org.junit.Assert.assertEquals
@@ -164,6 +165,20 @@ class WhiteboardGestureSessionTest {
         assertTrue(session.working.strokes.isEmpty())
         assertTrue(session.hasChanges)
         assertFalse(session.limitReached)
+    }
+
+    @Test
+    fun everyBrushKeepsItsStyleAcrossSamplesAndNavigationRollsItBack() {
+        WhiteboardBrush.entries.forEach { brush ->
+            val session = WhiteboardGestureSession(Whiteboard(), false, 0xFF1967D2L, 40f, brush)
+            session.begin(point(100f, 100f))
+            session.update(point(500f, 200f), finalPoint = true)
+            assertEquals(brush, session.working.strokes.single().brush)
+            assertEquals(40f, session.working.strokes.single().width)
+            assertEquals(2, session.working.strokes.single().points.size)
+            session.startNavigation()
+            assertTrue(session.working.strokes.isEmpty())
+        }
     }
 
     private fun session(

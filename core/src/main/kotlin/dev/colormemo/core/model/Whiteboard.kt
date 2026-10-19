@@ -1,5 +1,7 @@
 package dev.colormemo.core.model
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /** Strokes use a fixed square so drawings remain stable across screen sizes. */
@@ -15,10 +17,16 @@ data class Whiteboard(val strokes: List<WhiteboardStroke> = emptyList()) {
 }
 
 @Serializable
+enum class WhiteboardBrush { FINELINER, WATERCOLOR, MARKER }
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
 data class WhiteboardStroke(
     val color: Long = 0xFF202124,
     val width: Float = 6f,
     val points: List<WhiteboardPoint>,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val brush: WhiteboardBrush = WhiteboardBrush.FINELINER,
 )
 
 @Serializable

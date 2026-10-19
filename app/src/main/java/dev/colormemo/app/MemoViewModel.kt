@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.colormemo.app.data.BackupService
+import dev.colormemo.core.sync.SyncProtocolException
 import dev.colormemo.app.data.NoteInputException
 import dev.colormemo.app.data.SyncPreferences
 import dev.colormemo.app.reminder.ReminderPermissions
@@ -62,7 +63,7 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Exception) {
-        showMessage(if (error is NoteInputException) error.message ?: "笔记内容无效" else "笔记保存失败，请重试")
+        showMessage(if (error is NoteInputException || error is SyncProtocolException) error.message ?: "笔记内容无效" else "笔记保存失败，请重试")
         false
     }
 

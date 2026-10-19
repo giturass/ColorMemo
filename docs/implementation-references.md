@@ -22,3 +22,9 @@
 - [SVG 2 笔画绘制](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty)（2026-10-18）：圆帽、圆角与单点笔画的表现；白板导出使用固定方形坐标，单点显式绘制为圆形。文件仍通过上述 Storage Access Framework 写入用户选择的 ZIP，不新增存储权限。
 
 WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹钟及通知权限的参考链接见 [提醒说明](reminders.md)。
+
+2026-10-19 编辑交互扩展复核：
+
+- [Compose 滑动删除](https://developer.android.com/develop/ui/compose/touch-input/user-interactions/swipe-to-dismiss)：使用 `SwipeToDismissBox` 单向滑动，将卡片移入可恢复的回收站，多选时停用滑动。
+- [Markwon HTML](https://noties.io/Markwon/docs/v4/html/) 与 [4.6.2 UnderlineHandler](https://github.com/noties/Markwon/blob/v4.6.2/markwon-html/src/main/java/io/noties/markwon/html/tag/UnderlineHandler.java)：仅注册下划线处理器，渲染 `<u>…</u>`；不启用图片加载。
+- 文件选择、附件打开、笔型序列化及 SVG 的依据见 [同步协议](sync-protocol.md) 中 2026-10-19 的文档记录。

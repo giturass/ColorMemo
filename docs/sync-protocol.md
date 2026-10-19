@@ -35,7 +35,7 @@ AWS S3 至少需要目标对象的 `s3:GetObject`、`s3:PutObject`。首次不�
 | `nonce` | 新生成的 12 字节（96 位）随机值，使用标准 RFC 4648 Base64 编码，固定 16 个字符 |
 | `ciphertext` | AES-GCM 密文及末尾 16 字节（128 位）认证标签整体的标准 RFC 4648 Base64 编码，保留所需 `=` 填充 |
 
-每次加密和并发写入重试都生成新的随机 nonce；同一密钥下不能复用 nonce。AES 使用 `AES/GCM/NoPadding`，认证标签长度固定 128 位，明文是下节完整 `SyncDocument` 的规范 UTF-8 JSON 字节。整个快照一起加密，包括标题、正文、白板笔画、颜色、提醒、删除标记、时间、设备 ID 和修订历史。信封中的两个 Base64 字段使用标准字母表 `+/`，恢复密钥使用 URL-safe 字母表 `-_`，二者不可混用。
+每次加密和并发写入重试都生成新的随机 nonce；同一密钥下不能复用 nonce。AES 使用 `AES/GCM/NoPadding`，认证标签长度固定 128 位，明文是下节完整 `SyncDocument` 的规范 UTF-8 JSON 字节。整个快照一起加密，包括标题、正文、白板笔画、附件元数据与完整文件内容、颜色、提醒、删除标记、时间、设备 ID 和修订历史。信封中的两个 Base64 字段使用标准字母表 `+/`，恢复密钥使用 URL-safe 字母表 `-_`，二者不可混用。
 
 AAD 在加密和解密前通过 `Cipher.updateAAD()` 设置为下列 UTF-8 字节，无 BOM、无末尾换行；两处换行均为单个 LF（`0A`）：
 
@@ -104,9 +104,28 @@ AES-256-GCM
 }
 ```
 
-笔画按绘制顺序排列，坐标固定为 `0..1000` 的正方形空间，与显示尺寸无关；宽度为同一空间内的 `1..40`，颜色为不透明 ARGB 无符号值（JSON 以正整数表示）。点坐标与宽度必须为有限数值，每笔至少一个点，每块白板最多 500 笔、合计 6,000 点；单点显示为圆点，多点显示为圆帽、圆角折线。`{"strokes":[]}` 表示空白板，`whiteboard` 缺失或为 `null` 表示普通文字笔记。
+笔画按绘制顺序排列，坐标固定为 `0..1000` 的正方形空间，与显示尺寸无关；宽度为同一空间内的 `1..40`，颜色为不透明 ARGB 无符号值（JSON 以正整数表示）。点坐标与宽度必须为有限数值，每笔至少一个点，每块白板最多 500 笔、合计 6,000 点；默认细签字笔的单点显示为圆点，多点显示为圆帽、圆角折线。`{"strokes":[]}` 表示空白板，`whiteboard` 缺失或为 `null` 表示普通文字笔记。
 
 白板扩展仍使用内部文档的 `schemaVersion: 1`。写出 JSON 时使用 `@EncodeDefault(NEVER)` 省略默认的 `whiteboard: null`，因此文字笔记的内部格式保持不变。旧客户端采用严格未知字段校验，会拒绝含白板的 JSON 备份，避免重写时丢弃笔画；所有同步设备均须升级到支持加密的版本。JSON 备份保留可编辑笔画；Markdown ZIP 导出同目录 SVG 及相对图片引用，不包含完整同步修订信息。
+
+每笔还可包含 `brush`：`FINELINER`（默认，写出时省略）、`WATERCOLOR` 或 `MARKER`。水彩用宽度系数 1、0.8、0.55 和透明度 0.12、0.14、0.18 的三层圆帽笔迹呈现柔边叠色；马克笔使用 0.7 透明度、方形笔帽和斜角连接，单点为正方形。屏幕、卡片预览和 SVG 采用同一组参数，原始颜色字段仍是上述不透明 ARGB。界面提供 1、3、6、10、16、24、32、40 八档，不改变原有宽度范围。
+
+附件放在笔记的可选 `attachments` 数组中，默认空数组写出时省略。每项包含：
+
+| 字段 | 类型与约束 |
+| --- | --- |
+| `id` | 小写 UUID，同一笔记内不能重复 |
+| `fileName` | 1–255 字符，不能全为空白、包含控制字符或路径分隔符 |
+| `mimeType` | 最多 127 字符的 `type/subtype` |
+| `sizeBytes` | 原始字节数，0 到 5 MiB |
+| `sha256` | 原始文件的 SHA-256，小写 64 位十六进制 |
+| `dataBase64` | 原始文件字节的标准 RFC 4648 Base64，含规范填充，可表示空文件 |
+
+每条笔记最多 20 个附件，原始内容合计最多 8 MiB。接收和发送均验证长度、Base64 规范编码及 SHA-256；附件内容在整个 AES-GCM 快照内认证加密，文件名、类型和摘要不会额外发送给服务端。总快照仍限制为 16 MiB，附件 Base64 膨胀后的大小也计入限制。本机添加附件时检查合并后的总快照，超限不写入数据库并保留编辑草稿。没有额外的远端附件对象或需要单独清理的云端文件。
+
+附件列表参与用户内容比较、修订和冲突副本；回收站与恢复保留完整文件，永久删除记录清空附件。JSON 备份保留整个数组；Markdown ZIP 以独立文件和相对链接导出。本机在私有目录按摘要存储文件，Room 行和编辑器保存状态只存元数据，避免大文件超过 SQLite CursorWindow 或 Android saved state 的大小限制；数据库不应单独拷贝作为备份，应使用应用内导出。通过 FileProvider 的限定缓存目录和临时只读授权打开附件，不暴露整个私有目录。
+
+附件和笔型扩展仍沿用内部文档版本 1、加密信封版本 2；缺失新字段时读取为原有默认值。严格拒绝未知字段的旧客户端会停止同步或导入，不会悄悄丢弃附件、改变笔型；使用新功能后所有设备必须升级。
 
 快照最多 16 MiB UTF-8、10,000 条记录（包含回收站和永久删除标记），单条正文最多 100,000 个 Kotlin UTF-16 字符，标题最多 500 个字符，版本历史最多 100,000 个编号。正文和标题与编辑器限制一致，防止导入无法继续编辑的笔记。超限时停止写入，不静默裁切。重复笔记 ID、缺失身份/时间字段、未知版本或字段、无效 UTF-8、循环版本历史和同一版本号下不同内容都会被拒绝。未知字段失败是刻意设计，避免旧客户端重写并抹掉新版本数据。
 
@@ -197,3 +216,10 @@ JVM 测试覆盖多次离线编辑、时钟偏差、多个设备的冲突与收�
 - [Java 17 GCMParameterSpec](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/javax/crypto/spec/GCMParameterSpec.html)：IV 与以位为单位的认证标签长度参数。
 - [RFC 5116 §5.1–5.2](https://www.rfc-editor.org/rfc/rfc5116.html#section-5.2)：AEAD_AES_256_GCM 的 32 字节密钥、12 字节 nonce、16 字节标签及 nonce 复用风险；§1.2 明确 AEAD 不负责防重放。
 - [RFC 4648 §3.5、§4、§5](https://www.rfc-editor.org/rfc/rfc4648.html#section-3.5)：规范 Base64 pad bits、标准及 URL-safe 字母表。
+
+附件与笔型扩展核对的官方文档（2026-10-19）：
+
+- [Android Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files)：系统文件选择器与按 URI 读取选定文件；选取后复制完整内容，不依赖另一设备的本机 URI。
+- [Android 安全共享文件](https://developer.android.com/training/secure-file-sharing/share-file)：FileProvider、限定目录、临时只读 URI 授权。
+- [kotlinx.serialization EncodeDefault](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-encode-default/) 与 [ignoreUnknownKeys](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html)：省略默认字段、严格拒绝不支持的数据。
+- [SVG 2 绘制](https://www.w3.org/TR/SVG2/painting.html)：透明度、圆形／方形笔帽和斜角连接。

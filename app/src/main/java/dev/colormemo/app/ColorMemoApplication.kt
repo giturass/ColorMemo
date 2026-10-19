@@ -4,6 +4,7 @@ import android.app.Application
 import dev.colormemo.app.data.NoteDatabase
 import dev.colormemo.app.data.NoteRepository
 import dev.colormemo.app.data.SecureSettingsStore
+import dev.colormemo.app.data.attachmentStore
 import dev.colormemo.app.reminder.ReminderDependencies
 import dev.colormemo.app.reminder.ReminderNote
 import dev.colormemo.app.reminder.ReminderScheduler
@@ -39,18 +40,18 @@ class AppGraph(application: ColorMemoApplication) {
     val database = NoteDatabase.open(application)
     val settings = SecureSettingsStore(application)
     val reminders = ReminderScheduler(application)
-    val repository = NoteRepository(database, settings.deviceId, ::reconcileReminders)
+    val repository = NoteRepository(database, settings.deviceId, attachmentStore(application), ::reconcileReminders)
     val sync = SyncCoordinator(repository, settings)
     val work = SyncWorkScheduler(application)
     val startupMessage = MutableStateFlow<String?>(null)
 
     val reminderStore = object : ReminderStore {
         override fun findNote(noteId: String): ReminderNote? = database.notes().find(noteId)?.let {
-            NoteRepository.decode(it).asReminder()
+            NoteRepository.decodeMetadata(it).asReminder()
         }
 
         override fun allNotes(): List<ReminderNote> = database.notes().getAll().map {
-            NoteRepository.decode(it).asReminder()
+            NoteRepository.decodeMetadata(it).asReminder()
         }
     }
 

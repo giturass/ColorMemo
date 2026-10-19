@@ -1,6 +1,8 @@
 package dev.colormemo.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +24,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.FormatUnderlined
+import androidx.compose.material.icons.outlined.StrikethroughS
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
@@ -44,7 +49,6 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -76,6 +80,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
@@ -87,6 +92,10 @@ import androidx.compose.ui.unit.dp
 import dev.colormemo.app.ui.theme.containerColor
 import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.Note
+import dev.colormemo.core.model.NoteAttachment
+import dev.colormemo.app.data.attachmentStore
+import dev.colormemo.app.data.readAttachment
+import dev.colormemo.app.data.prepareAttachmentIntent
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.sync.SyncJson
@@ -94,6 +103,8 @@ import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 
 private const val MAX_TITLE_LENGTH = 500
@@ -121,6 +132,18 @@ internal fun NoteEditorScreen(
     var whiteboard by rememberSaveable(stateSaver = WhiteboardDraftSaver) {
         mutableStateOf(note?.whiteboard ?: if (newWhiteboard) Whiteboard() else null)
     }
+    val context = LocalContext.current
+    val attachmentFiles = remember(context) { attachmentStore(context) }
+    val attachmentSaver = remember(attachmentFiles) {
+        Saver<List<NoteAttachment>, String>(
+            save = { values -> SyncJson.json.encodeToString(values.map { it.copy(dataBase64 = "") }) },
+            restore = { value -> SyncJson.json.decodeFromString<List<NoteAttachment>>(value).map(attachmentFiles::hydrate) },
+        )
+    }
+    var attachments by rememberSaveable(stateSaver = attachmentSaver) { mutableStateOf(note?.attachments.orEmpty()) }
+    var showAttachments by rememberSaveable { mutableStateOf(false) }
+    var importingAttachment by remember { mutableStateOf(false) }
+    var attachmentError by remember { mutableStateOf<String?>(null) }
     var color by rememberSaveable { mutableStateOf(note?.color ?: NoteColor.DEFAULT) }
     var pinned by rememberSaveable { mutableStateOf(note?.isPinned ?: false) }
     var archived by rememberSaveable { mutableStateOf(note?.isArchived ?: false) }
@@ -141,18 +164,56 @@ internal fun NoteEditorScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val readOnly = note?.deletedAt != null
-    val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null, whiteboard)
+    val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null, whiteboard, attachments)
     val initialFingerprint = rememberSaveable { draft.fingerprint() }
-    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard) { draft.fingerprint() }
+    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, attachments) { draft.fingerprint() }
     val dirty = fingerprint != initialFingerprint
-    val canSave = !saving && (title.isNotBlank() || content.text.isNotBlank() ||
+    val canSave = !saving && !importingAttachment && (title.isNotBlank() || content.text.isNotBlank() || attachments.isNotEmpty() ||
         whiteboard?.strokes?.isNotEmpty() == true || (whiteboard != null && note != null)) &&
         title.length <= MAX_TITLE_LENGTH && content.text.length <= MAX_CONTENT_LENGTH
+    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            importingAttachment = true
+            attachmentError = null
+            scope.launch {
+                try {
+                    val attachment = withContext(Dispatchers.IO) { readAttachment(context, uri) }
+                    require(attachments.size < NoteAttachment.MAX_PER_NOTE) { "每条笔记最多 20 个附件" }
+                    require(attachments.sumOf { it.sizeBytes.toLong() } + attachment.sizeBytes <= NoteAttachment.MAX_NOTE_BYTES) { "每条笔记的附件合计最多 8 MiB" }
+                    attachments = attachments + attachment
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: IllegalArgumentException) {
+                    attachmentError = error.message ?: "无法添加附件"
+                } catch (_: Exception) {
+                    attachmentError = "无法读取附件，请重新选择文件。"
+                } finally {
+                    importingAttachment = false
+                }
+            }
+        }
+    }
+    val openAttachment: (NoteAttachment) -> Unit = { attachment ->
+        scope.launch {
+            try {
+                val intent = withContext(Dispatchers.IO) { prepareAttachmentIntent(context, attachment) }
+                context.startActivity(intent)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: android.content.ActivityNotFoundException) {
+                attachmentError = "没有可打开此类附件的应用。"
+                showAttachments = true
+            } catch (_: Exception) {
+                attachmentError = "无法打开附件，请重试。"
+                showAttachments = true
+            }
+        }
+    }
     val currentNote = state.notes.firstOrNull { it.id == note?.id }
     val remoteChanged = !state.loading && note != null && currentNote != null && currentNote.revision != note.revision
 
     val close: () -> Unit = {
-        if (!saving) {
+        if (!saving && !importingAttachment) {
             if (dirty && !readOnly) showLeaveDialog = true else onClose()
         }
     }
@@ -220,12 +281,19 @@ internal fun NoteEditorScreen(
                 Column {
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                     if (readOnly) {
-                        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            if (whiteboard != null) {
-                                TextButton(onClick = { showWhiteboardDetails = true }, modifier = Modifier.weight(1f)) { Text("标题与说明") }
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                            TextButton(onClick = { showDeleteDialog = true }, modifier = Modifier.align(Alignment.CenterStart)) {
+                                Text("彻底删除", color = MaterialTheme.colorScheme.error)
                             }
-                            TextButton(onClick = { showDeleteDialog = true }, modifier = Modifier.weight(1f)) { Text("彻底删除", color = MaterialTheme.colorScheme.error) }
-                            Button(onClick = { callbacks.onRestore(note.id); onClose() }, modifier = Modifier.weight(1f)) { Text("恢复便笺") }
+                            Box(Modifier.align(Alignment.Center)) {
+                                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "更多操作") }
+                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    ModifiedTimeLabel(note)
+                                    if (attachments.isNotEmpty()) DropdownMenuItem(text = { Text("附件") }, onClick = { menuOpen = false; showAttachments = true })
+                                    if (whiteboard != null) DropdownMenuItem(text = { Text("标题与说明") }, onClick = { menuOpen = false; showWhiteboardDetails = true })
+                                }
+                            }
+                            TextButton(onClick = { callbacks.onRestore(note.id); onClose() }, modifier = Modifier.align(Alignment.CenterEnd)) { Text("恢复便笺") }
                         }
                     } else {
                         if (showPalette) {
@@ -236,6 +304,8 @@ internal fun NoteEditorScreen(
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                                 MarkdownAction(Icons.Outlined.FormatBold, "加粗", saving) { content = content.insert("**", "**", "文字"); focusRequester.requestFocus() }
                                 MarkdownAction(Icons.Outlined.FormatItalic, "斜体", saving) { content = content.insert("*", "*", "文字"); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.FormatUnderlined, "下划线", saving) { content = content.insert("<u>", "</u>", "文字"); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.StrikethroughS, "删除线", saving) { content = content.insert("~~", "~~", "文字"); focusRequester.requestFocus() }
                                 TextButton(onClick = { content = content.insert("# ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving) { Text("H₁", style = MaterialTheme.typography.titleMedium) }
                                 TextButton(onClick = { content = content.insert("## ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving) { Text("H₂", style = MaterialTheme.typography.titleMedium) }
                                 MarkdownAction(Icons.AutoMirrored.Outlined.FormatListBulleted, "插入列表", saving) { content = content.insert("- ", "", "列表项", block = true); focusRequester.requestFocus() }
@@ -245,30 +315,36 @@ internal fun NoteEditorScreen(
                                 MarkdownAction(Icons.Outlined.Code, "插入代码块", saving) { content = content.insert("```\n", "\n```", "代码", block = true); focusRequester.requestFocus() }
                             }
                         }
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconToggleButton(checked = showPalette, onCheckedChange = { showPalette = it }, enabled = !saving) { Icon(Icons.Outlined.Palette, "选择卡片颜色") }
-                            IconButton(onClick = { showReminder = true }, enabled = !saving) { Icon(Icons.Outlined.NotificationsNone, "设置提醒") }
-                            IconToggleButton(checked = archived, onCheckedChange = { archived = it }, enabled = !saving) { Icon(if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, if (archived) "取消归档" else "归档") }
-                            Box {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                            Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+                                IconToggleButton(checked = showPalette, onCheckedChange = { showPalette = it }, enabled = !saving) { Icon(Icons.Outlined.Palette, "选择卡片颜色") }
+                                IconButton(onClick = { showAttachments = true }, enabled = !saving) { Icon(Icons.Outlined.AttachFile, "附件") }
+                            }
+                            Box(Modifier.align(Alignment.Center)) {
                                 IconButton(onClick = { menuOpen = true }, enabled = !saving) { Icon(Icons.Outlined.MoreVert, "更多操作") }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    ModifiedTimeLabel(note)
+                                    HorizontalDivider()
+                                    DropdownMenuItem(text = { Text("设置提醒") }, leadingIcon = { Icon(Icons.Outlined.NotificationsNone, null) }, onClick = { menuOpen = false; showReminder = true })
+                                    DropdownMenuItem(text = { Text(if (archived) "取消归档" else "归档") }, leadingIcon = { Icon(if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null) }, onClick = { menuOpen = false; archived = !archived })
                                     DropdownMenuItem(text = { Text(if (whiteboard != null) "白板帮助" else "Markdown 帮助") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.HelpOutline, null) }, onClick = { menuOpen = false; showHelp = true })
                                     if (note != null) {
                                         DropdownMenuItem(text = { Text("移到回收站") }, leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) }, onClick = { menuOpen = false; showDeleteDialog = true })
                                     }
                                 }
                             }
-                            Spacer(Modifier.weight(1f))
-                            if (whiteboard != null) {
-                                TextButton(onClick = { showWhiteboardDetails = true }, enabled = !saving) { Text("标题与说明") }
-                            } else {
-                                TextButton(onClick = {
-                                    requestEditorFocus = preview
-                                    preview = !preview
-                                }, enabled = !saving) {
-                                    Icon(if (preview) Icons.Outlined.Edit else Icons.Outlined.Preview, null, Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(if (preview) "编辑" else "预览")
+                            Box(Modifier.align(Alignment.CenterEnd)) {
+                                if (whiteboard != null) {
+                                    TextButton(onClick = { showWhiteboardDetails = true }, enabled = !saving) { Text("标题与说明") }
+                                } else {
+                                    TextButton(onClick = {
+                                        requestEditorFocus = preview
+                                        preview = !preview
+                                    }, enabled = !saving) {
+                                        Icon(if (preview) Icons.Outlined.Edit else Icons.Outlined.Preview, null, Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(if (preview) "编辑" else "预览")
+                                    }
                                 }
                             }
                         }
@@ -297,6 +373,14 @@ internal fun NoteEditorScreen(
                         leadingIcon = { Icon(Icons.Outlined.NotificationsNone, null, Modifier.size(16.dp)) },
                     )
                     if (!readOnly) IconButton(onClick = { reminderAt = null }, enabled = !saving) { Icon(Icons.Outlined.Close, "移除提醒", Modifier.size(18.dp)) }
+                }
+            }
+            if (attachments.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    attachments.forEach { attachment ->
+                        AssistChip(onClick = { openAttachment(attachment) }, label = { Text(attachment.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(140.dp)) },
+                            leadingIcon = { Icon(Icons.Outlined.AttachFile, null, Modifier.size(16.dp)) })
+                    }
                 }
             }
             if (whiteboard == null) Spacer(Modifier.height(8.dp))
@@ -359,6 +443,18 @@ internal fun NoteEditorScreen(
             }
         }
     }
+    if (showAttachments) {
+        AttachmentDialog(
+            attachments = attachments,
+            readOnly = readOnly || saving,
+            importing = importingAttachment,
+            error = attachmentError,
+            onAdd = { attachmentError = null; attachmentPicker.launch(arrayOf("*/*")) },
+            onOpen = openAttachment,
+            onRemove = { attachment -> attachments = attachments.filterNot { it.id == attachment.id } },
+            onDismiss = { if (!importingAttachment) { showAttachments = false; attachmentError = null } },
+        )
+    }
     if (showWhiteboardDetails && whiteboard != null) {
         WhiteboardDetailsDialog(
             title = title,
@@ -420,11 +516,11 @@ internal fun NoteEditorScreen(
             title = { Text(if (whiteboard != null) "在白板上记录" else "用 Markdown 记录") },
             text = {
                 if (whiteboard != null) {
-                    Text("单指或触控笔写画，双指拖动画布或捏合缩放；选择「移动」后也可单指拖动。点击「全图」回到完整画布。\n\n画笔设置可调整颜色和粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。")
+                    Text("单指或触控笔写画，双指拖动画布或捏合缩放。点击「全图」回到完整画布。\n\n画笔设置可选择细签字笔、水彩笔、马克笔，并调整颜色和八档粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。")
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text("用底部工具栏插入格式，点击「预览」查看排版。")
-                        Text("# 一级标题\n## 二级标题\n**加粗文字**\n*斜体文字*\n- 列表项\n- [ ] 待办事项\n- [x] 已完成\n[链接文字](https://example.com)\n> 引用\n`行内代码`", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        Text("# 一级标题\n## 二级标题\n**加粗文字**\n*斜体文字*\n<u>下划线文字</u>\n~~删除线文字~~\n- 列表项\n- [ ] 待办事项\n- [x] 已完成\n[链接文字](https://example.com)\n> 引用\n`行内代码`", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                         Text("也支持代码块、表格和删除线。", style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -487,6 +583,16 @@ private fun WhiteboardDetailsDialog(
 }
 
 @Composable
+private fun ModifiedTimeLabel(note: Note?) {
+    Text(
+        note?.let { "最后修改：${formatModified(it.updatedAt)}" } ?: "尚未保存",
+        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
 private fun MarkdownAction(icon: ImageVector, description: String, disabled: Boolean, onClick: () -> Unit) {
     IconButton(onClick = onClick, enabled = !disabled) { Icon(icon, description, Modifier.size(20.dp)) }
 }
@@ -504,7 +610,8 @@ private fun EditorNotice(message: String, isError: Boolean = false) {
 
 private fun NoteDraft.fingerprint(): String {
     val text = listOf(title, content, color.name, isPinned.toString(), isArchived.toString(), reminderAt.toString(),
-        whiteboard?.let { SyncJson.json.encodeToString(it) }.orEmpty())
+        whiteboard?.let { SyncJson.json.encodeToString(it) }.orEmpty(),
+        SyncJson.json.encodeToString(attachments.map { it.copy(dataBase64 = "") }))
         .joinToString("") { "${it.length}:$it" }
     return MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 }

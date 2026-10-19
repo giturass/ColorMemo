@@ -1,6 +1,7 @@
 package dev.colormemo.core.sync
 
 import dev.colormemo.core.model.Note
+import dev.colormemo.core.model.NoteAttachment
 import dev.colormemo.core.model.Whiteboard
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -124,16 +125,40 @@ object SyncJson {
                 throw SyncProtocolException("单条笔记过大，未覆盖任何数据。")
             }
             note.whiteboard?.let(::validateWhiteboard)
+            validateAttachments(note.attachments)
             if (note.createdAt < 0 || note.updatedAt < 0 || note.updatedAt == Long.MAX_VALUE ||
                 note.deletedAt?.let { it < 0 } == true || note.reminderAt?.let { it < 0 } == true
             ) {
                 throw SyncProtocolException("笔记时间数据无效。")
             }
             if (note.isPurged && (note.deletedAt == null || note.title.isNotEmpty() ||
-                    note.content.isNotEmpty() || note.reminderAt != null || note.whiteboard != null)
+                    note.content.isNotEmpty() || note.reminderAt != null || note.whiteboard != null || note.attachments.isNotEmpty())
             ) {
                 throw SyncProtocolException("永久删除记录包含无效数据。")
             }
+        }
+    }
+
+    private fun validateAttachments(attachments: List<NoteAttachment>) {
+        if (attachments.size > NoteAttachment.MAX_PER_NOTE ||
+            attachments.map { it.id }.toSet().size != attachments.size ||
+            attachments.sumOf { it.sizeBytes.toLong() } > NoteAttachment.MAX_NOTE_BYTES
+        ) throw SyncProtocolException("单条笔记的附件数量或大小超过上限。")
+        attachments.forEach { attachment ->
+            if (!Regex("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}").matches(attachment.id) ||
+                attachment.fileName.isBlank() || attachment.fileName.length > 255 ||
+                attachment.fileName.any { it.isISOControl() || it == '/' || it == '\\' } ||
+                !NoteAttachment.isValidMimeType(attachment.mimeType) ||
+                attachment.sizeBytes !in 0..NoteAttachment.MAX_FILE_BYTES ||
+                !Regex("[a-f0-9]{64}").matches(attachment.sha256) ||
+                attachment.dataBase64.length != ((attachment.sizeBytes + 2) / 3) * 4
+            ) throw SyncProtocolException("附件信息无效，未覆盖任何数据。")
+            val bytes = try { attachment.bytes() } catch (_: IllegalArgumentException) {
+                throw SyncProtocolException("附件编码无效，未覆盖任何数据。")
+            }
+            if (bytes.size != attachment.sizeBytes || NoteAttachment.digest(bytes) != attachment.sha256 ||
+                java.util.Base64.getEncoder().encodeToString(bytes) != attachment.dataBase64
+            ) throw SyncProtocolException("附件内容校验失败，未覆盖任何数据。")
         }
     }
 
