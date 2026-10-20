@@ -38,7 +38,9 @@ class WhiteboardImagesTest {
         assertTrue(drawing.working.strokes.isNotEmpty())
         val eraser = WhiteboardGestureSession(drawing.working, true, 0xFF202124, 6f)
         eraser.begin(WhiteboardPoint(150f, 100f))
-        assertTrue(eraser.working.strokes.isEmpty())
+        assertEquals(2, eraser.working.strokes.size)
+        assertEquals(WhiteboardPoint(100f, 100f), eraser.working.strokes.first().points.first())
+        assertEquals(WhiteboardPoint(200f, 100f), eraser.working.strokes.last().points.last())
         assertEquals(before.images, eraser.working.images)
         assertEquals(before, drawing.startNavigation())
     }

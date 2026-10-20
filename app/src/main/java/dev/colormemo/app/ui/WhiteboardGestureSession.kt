@@ -46,7 +46,7 @@ internal class WhiteboardGestureSession(
         startPoint = point
         lastPoint = point
         if (erasing) {
-            working = working.eraseBetween(point, point, eraserRadius)
+            erase(point, point)
         } else if (working.strokes.size >= Whiteboard.MAX_STROKES || pointCount >= Whiteboard.MAX_POINTS) {
             // Keep the gesture alive: a second finger must still be able to navigate.
             limitReached = true
@@ -67,7 +67,7 @@ internal class WhiteboardGestureSession(
         if (isNavigating) return working
         val previous = lastPoint ?: return working
         if (erasing) {
-            working = working.eraseBetween(previous, point, eraserRadius)
+            erase(previous, point)
             lastPoint = point
         } else if (shape != null) {
             val points = shape.points(startPoint ?: return working, point, width)
@@ -92,6 +92,11 @@ internal class WhiteboardGestureSession(
             }
         }
         return working
+    }
+
+    private fun erase(start: WhiteboardPoint, end: WhiteboardPoint) {
+        limitReached = false
+        working = working.eraseBetween(start, end, eraserRadius) { limitReached = true }
     }
 
     /** Discard this gesture's provisional ink/erasing and ignore all later drawing points. */

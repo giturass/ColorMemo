@@ -181,7 +181,7 @@ class WhiteboardShapesTest {
     }
 
     @Test
-    fun shapesUseExistingJsonAndSvgFormatsAndEraseAsOneStroke() {
+    fun shapesUseExistingJsonAndSvgFormatsAndKeepTheirOutsidePartsAfterErasing() {
         val sessions = WhiteboardShape.entries.map { shape ->
             WhiteboardGestureSession(Whiteboard(), false, 0xFF1967D2L, 6f, shape = shape).apply {
                 begin(point(100f, 200f))
@@ -197,7 +197,12 @@ class WhiteboardShapesTest {
         sessions.forEach { session ->
             val stroke = session.working.strokes.single()
             val hit = stroke.points.first()
-            assertTrue(session.working.eraseBetween(hit, hit, 8f).strokes.isEmpty())
+            val erased = session.working.eraseBetween(hit, hit, 8f)
+            assertTrue(erased.strokes.isNotEmpty())
+            assertNotEquals(session.working, erased)
+            assertEquals(erased, SyncJson.json.decodeFromString<Whiteboard>(SyncJson.json.encodeToString(erased)))
+            val erasedDocument = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(whiteboardSvg(erased).byteInputStream())
+            assertEquals(erased.strokes.size, erasedDocument.getElementsByTagName("path").length)
         }
     }
 

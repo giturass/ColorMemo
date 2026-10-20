@@ -80,8 +80,12 @@ class WhiteboardGestureSessionTest {
         val before = Whiteboard(listOf(first, second, third))
         val session = session(before, erasing = true)
 
-        assertEquals(listOf(second, third), session.begin(point(500f, 100f)).strokes)
-        assertEquals(listOf(third), session.update(point(500f, 700f)).strokes)
+        val firstLeft = first.copy(points = listOf(point(100f, 100f), point(469f, 100f)))
+        val firstRight = first.copy(points = listOf(point(531f, 100f), point(900f, 100f)))
+        val secondLeft = second.copy(points = listOf(point(100f, 500f), point(469f, 500f)))
+        val secondRight = second.copy(points = listOf(point(531f, 500f), point(900f, 500f)))
+        assertEquals(listOf(firstLeft, firstRight, second, third), session.begin(point(500f, 100f)).strokes)
+        assertEquals(listOf(firstLeft, firstRight, secondLeft, secondRight, third), session.update(point(500f, 700f)).strokes)
         assertTrue(session.hasChanges)
         session.startNavigation()
         session.update(point(500f, 900f), finalPoint = true)
@@ -191,7 +195,9 @@ class WhiteboardGestureSessionTest {
 
         val largeTap = WhiteboardGestureSession(before, true, 0xFF202124L, 3f, eraserRadius = 56f)
         largeTap.begin(point(500f, 550f))
-        assertTrue(largeTap.working.strokes.isEmpty())
+        assertEquals(2, largeTap.working.strokes.size)
+        assertEquals(point(100f, 500f), largeTap.working.strokes.first().points.first())
+        assertEquals(point(900f, 500f), largeTap.working.strokes.last().points.last())
 
         val largeSwipe = WhiteboardGestureSession(before, true, 0xFF202124L, 3f, eraserRadius = 56f)
         largeSwipe.begin(point(0f, 550f))
@@ -200,6 +206,25 @@ class WhiteboardGestureSessionTest {
         assertTrue(largeSwipe.working.strokes.isEmpty())
         largeSwipe.startNavigation()
         assertSame(before, largeSwipe.working)
+    }
+
+    @Test
+    fun fragmentLimitKeepsTheOriginalInkAndALaterEndCutCanStillSucceed() {
+        val dot = WhiteboardStroke(points = listOf(point(100f, 100f)))
+        val before = Whiteboard(List(Whiteboard.MAX_STROKES - 1) { dot } + stroke(100f, 500f, 900f, 500f))
+        val session = session(before, erasing = true)
+
+        assertSame(before, session.begin(point(500f, 500f)))
+        assertTrue(session.limitReached)
+        assertFalse(session.hasChanges)
+        session.update(point(900f, 500f), finalPoint = true)
+        assertFalse(session.limitReached)
+        assertEquals(Whiteboard.MAX_STROKES, session.working.strokes.size)
+        assertEquals(stroke(100f, 500f, 469f, 500f), session.working.strokes.last())
+        assertTrue(session.hasChanges)
+        session.startNavigation()
+        assertSame(before, session.working)
+        assertFalse(session.limitReached)
     }
 
     @Test
@@ -212,6 +237,25 @@ class WhiteboardGestureSessionTest {
         val tooLarge = WhiteboardGestureSession(before, true, 0xFF202124L, 3f, eraserRadius = 1000f)
         tooLarge.begin(point(500f, 650f))
         assertSame(before, tooLarge.working)
+    }
+
+    @Test
+    fun localEraseTracksTheVisibleCircleAcrossViewportSizesAndZoomLevels() {
+        val before = Whiteboard(listOf(stroke(100f, 500f, 900f, 500f)))
+        for ((width, height) in listOf(400f to 650f, 800f to 1300f)) for (zoom in listOf(1f, 2f, 8f)) {
+            val transform = WhiteboardViewport(zoom = zoom).transform(width, height)
+            val screen = transform.worldToScreen(500f, 500f)
+            val world = transform.screenToWorld(screen.x, screen.y)
+            val session = WhiteboardGestureSession(before, true, 0xFF202124L, 6f, eraserRadius = 28f)
+
+            session.begin(point(world.x, world.y))
+
+            assertEquals(2, session.working.strokes.size)
+            val left = session.working.strokes.first().points.last()
+            val right = session.working.strokes.last().points.first()
+            assertEquals((28f + 3f) * transform.scale, screen.x - transform.worldToScreen(left.x, left.y).x, 0.001f)
+            assertEquals((28f + 3f) * transform.scale, transform.worldToScreen(right.x, right.y).x - screen.x, 0.001f)
+        }
     }
 
     private fun session(

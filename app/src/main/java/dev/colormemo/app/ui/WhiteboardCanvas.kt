@@ -32,6 +32,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.IconButton
@@ -190,15 +191,19 @@ internal fun WhiteboardEditor(
                     Icon(Icons.Outlined.Draw, "画笔，设置笔型、颜色与粗细")
                 }
                 Box {
-                    FilterChip(
-                        selected = tool == WhiteboardTool.SHAPE,
-                        onClick = { showShapePicker = true },
+                    IconToggleButton(
+                        checked = tool == WhiteboardTool.SHAPE,
+                        onCheckedChange = { showShapePicker = true },
                         enabled = controlsEnabled,
-                        leadingIcon = { WhiteboardShapeIcon(shape) },
-                        label = { Text(if (tool == WhiteboardTool.SHAPE) shape.displayName else "图形") },
-                        modifier = Modifier.semantics { contentDescription = "图形模板：${shape.displayName}" },
-                    )
+                        modifier = Modifier.semantics { contentDescription = "图形模板：${shape.displayName}，选择图形与颜色" },
+                    ) { WhiteboardShapeIcon(shape) }
                     DropdownMenu(expanded = showShapePicker && controlsEnabled, onDismissRequest = { showShapePicker = false }) {
+                        Text("颜色", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.labelLarge)
+                        WhiteboardInkColorPicker(ink, onColorChange = {
+                            ink = it
+                            tool = WhiteboardTool.SHAPE
+                        })
+                        HorizontalDivider()
                         WhiteboardShape.entries.forEach { template ->
                             DropdownMenuItem(
                                 text = { Text(template.displayName) },
@@ -385,7 +390,8 @@ internal fun WhiteboardEditor(
                 whiteboard.strokes.sumOf { it.points.size } >= Whiteboard.MAX_POINTS)
             ) {
                 Text(
-                    "白板已达到容量上限，请撤销或擦除部分笔迹后继续。",
+                    if (erasing && limitReached) "擦除后的笔迹片段过多，请扩大橡皮范围或撤销部分笔迹。"
+                    else "白板已达到容量上限，请撤销或擦除部分笔迹后继续。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     modifier = Modifier.align(Alignment.TopCenter).padding(8.dp)
@@ -421,22 +427,7 @@ internal fun WhiteboardEditor(
                         }
                     }
                     Text("颜色", style = MaterialTheme.typography.labelLarge)
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        inkColors.forEach { (color, label) ->
-                            val selected = ink == color
-                            Box(
-                                Modifier.size(48.dp).clip(CircleShape)
-                                    .selectable(selected = selected, role = Role.RadioButton, onClick = { ink = color })
-                                    .semantics { contentDescription = "${label}画笔" }
-                                    .padding(5.dp)
-                                    .border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                                    .padding(3.dp).background(Color(color), CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (selected) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Color.White)
-                            }
-                        }
-                    }
+                    WhiteboardInkColorPicker(ink, onColorChange = { ink = it })
                     Text("笔触粗细", style = MaterialTheme.typography.labelLarge)
                     listOf(1f, 3f, 6f, 10f, 16f, 24f, 32f, 40f).chunked(4).forEachIndexed { rowIndex, widths ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -476,7 +467,7 @@ internal fun WhiteboardEditor(
             title = { Text("橡皮设置") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("拖动调整擦除范围。触及笔画会整笔擦除，图片保留。")
+                    Text("拖动调整擦除范围。仅擦除扫过的局部笔迹，保留其余笔画和图片。")
                     Canvas(Modifier.fillMaxWidth().height(140.dp).clip(MaterialTheme.shapes.small).background(Color.White)) {
                         val radius = eraserRadius / MAX_ERASER_RADIUS * (size.minDimension / 2f - 8.dp.toPx())
                         drawCircle(Color(0x145F6368), radius)
@@ -514,6 +505,26 @@ internal fun WhiteboardEditor(
             },
             dismissButton = { TextButton(onClick = { showClearDialog = false }) { Text("取消") } },
         )
+    }
+}
+
+@Composable
+private fun WhiteboardInkColorPicker(ink: Long, onColorChange: (Long) -> Unit) {
+    Row(Modifier.horizontalScroll(rememberScrollState())) {
+        inkColors.forEach { (color, label) ->
+            val selected = ink == color
+            Box(
+                Modifier.size(48.dp).clip(CircleShape)
+                    .selectable(selected = selected, role = Role.RadioButton, onClick = { onColorChange(color) })
+                    .semantics { contentDescription = "${label}笔触" }
+                    .padding(5.dp)
+                    .border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    .padding(3.dp).background(Color(color), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Color.White)
+            }
+        }
     }
 }
 
