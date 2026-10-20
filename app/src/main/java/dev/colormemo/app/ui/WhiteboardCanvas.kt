@@ -52,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -73,9 +74,13 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardPoint
+import dev.colormemo.core.model.WhiteboardImage
+import dev.colormemo.core.model.NoteAttachment
+import kotlin.math.roundToInt
 
 private const val HISTORY_LIMIT = 25
 private const val ERASER_RADIUS = 28f
@@ -102,6 +107,9 @@ internal fun WhiteboardEditor(
     onWhiteboardChange: (Whiteboard) -> Unit,
     modifier: Modifier = Modifier,
     readOnly: Boolean = false,
+    attachments: List<NoteAttachment> = emptyList(),
+    imageToInsert: WhiteboardImage? = null,
+    onImageInserted: () -> Unit = {},
 ) {
     val currentBoard by rememberUpdatedState(whiteboard)
     val onChange by rememberUpdatedState(onWhiteboardChange)
@@ -123,6 +131,7 @@ internal fun WhiteboardEditor(
     var showClearDialog by remember { mutableStateOf(false) }
     var limitReached by remember { mutableStateOf(false) }
     val controlsEnabled = !readOnly && !drawing
+    val imageBitmaps = rememberWhiteboardImages(whiteboard, attachments, 1200)
 
     fun publish(next: Whiteboard) {
         lastPublished = next
@@ -147,6 +156,15 @@ internal fun WhiteboardEditor(
         if (readOnly) {
             showClearDialog = false
             showBrushSettings = false
+        }
+    }
+    LaunchedEffect(imageToInsert, canvasSize, readOnly) {
+        if (imageToInsert != null && !readOnly && canvasSize.width > 0 && canvasSize.height > 0) {
+            val image = imageToInsert.placedIn(viewport.transform(canvasSize.width.toFloat(), canvasSize.height.toFloat()))
+            rememberUndo(currentBoard)
+            publish(currentBoard.copy(images = currentBoard.images + image))
+            tool = WhiteboardTool.PEN
+            onImageInserted()
         }
     }
 
@@ -187,7 +205,7 @@ internal fun WhiteboardEditor(
                 }
                 IconButton(
                     onClick = { showClearDialog = true },
-                    enabled = controlsEnabled && whiteboard.strokes.isNotEmpty(),
+                    enabled = controlsEnabled && (whiteboard.strokes.isNotEmpty() || whiteboard.images.isNotEmpty()),
                 ) { Icon(Icons.Outlined.DeleteOutline, "清空白板") }
             }
         }
@@ -305,7 +323,7 @@ internal fun WhiteboardEditor(
                         for (x in 0..(Whiteboard.CANVAS_WIDTH / 50f).toInt()) for (y in 0..(Whiteboard.CANVAS_HEIGHT / 50f).toInt()) {
                             drawCircle(Color(0xFFE0E3E7), 0.7.dp.toPx(), origin + Offset(x * gridStep, y * gridStep))
                         }
-                        drawWhiteboard(whiteboard, transform.scale, origin)
+                        drawWhiteboard(whiteboard, transform.scale, origin, imageBitmaps)
                         eraserPosition?.let { point ->
                             drawCircle(
                                 Color(0xFF5F6368),
@@ -413,7 +431,7 @@ internal fun WhiteboardEditor(
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
             title = { Text("清空白板？") },
-            text = { Text("所有笔迹都会清除，本次编辑中可以撤销。") },
+            text = { Text("所有笔迹和图片都会清除，本次编辑中可以撤销。") },
             confirmButton = {
                 TextButton(onClick = {
                     showClearDialog = false
@@ -428,7 +446,8 @@ internal fun WhiteboardEditor(
 }
 
 @Composable
-internal fun WhiteboardPreview(whiteboard: Whiteboard, modifier: Modifier = Modifier) {
+internal fun WhiteboardPreview(whiteboard: Whiteboard, modifier: Modifier = Modifier, attachments: List<NoteAttachment> = emptyList()) {
+    val imageBitmaps = rememberWhiteboardImages(whiteboard, attachments, 384)
     Canvas(
         modifier
             .fillMaxWidth()
@@ -438,7 +457,7 @@ internal fun WhiteboardPreview(whiteboard: Whiteboard, modifier: Modifier = Modi
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
             .semantics { contentDescription = "白板预览" },
     ) {
-        drawWhiteboard(whiteboard)
+        drawWhiteboard(whiteboard, imageBitmaps = imageBitmaps)
     }
 }
 
@@ -446,7 +465,19 @@ private fun DrawScope.drawWhiteboard(
     whiteboard: Whiteboard,
     scale: Float = size.width / Whiteboard.CANVAS_WIDTH,
     origin: Offset = Offset.Zero,
+    imageBitmaps: Map<String, ImageBitmap> = emptyMap(),
 ) {
+    whiteboard.images.forEach { image ->
+        val offset = origin + Offset(image.x * scale, image.y * scale)
+        val imageSize = Size(image.width * scale, image.height * scale)
+        val bitmap = imageBitmaps[image.attachmentId]
+        if (bitmap != null) {
+            drawImage(bitmap, dstOffset = IntOffset(offset.x.roundToInt(), offset.y.roundToInt()),
+                dstSize = IntSize(imageSize.width.roundToInt().coerceAtLeast(1), imageSize.height.roundToInt().coerceAtLeast(1)))
+        } else {
+            drawRect(Color(0xFFE0E3E7), offset, imageSize)
+        }
+    }
     whiteboard.strokes.forEach { stroke ->
         val first = stroke.points.firstOrNull() ?: return@forEach
         val path = Path().apply {

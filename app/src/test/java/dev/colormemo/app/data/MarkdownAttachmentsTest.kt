@@ -10,6 +10,15 @@ class MarkdownAttachmentsTest {
     private val image = NoteAttachment.create("照片 [1].png", "image/png", byteArrayOf(1))
 
     @Test
+    fun canvasImageSurvivesWithoutMarkdownAndUndoRedoRestoreItsAttachment() {
+        val draft = listOf(image)
+        assertEquals(draft, retainMarkdownAttachments(draft, listOf(image.id), emptySet(), setOf(image.id)))
+        assertTrue(retainMarkdownAttachments(draft, listOf(image.id), emptySet(), emptySet()).isEmpty())
+        assertEquals(draft, retainMarkdownAttachments(draft, listOf(image.id), emptySet(), setOf(image.id)))
+        assertEquals(draft, retainMarkdownAttachments(draft, listOf(image.id), setOf(image.markdownPath), emptySet()))
+    }
+
+    @Test
     fun parsesInlineAndReferenceImagesAndLinksButIgnoresCodeAndEscapes() {
         val markdown = """
             ![内联](<${image.markdownPath}>)

@@ -40,3 +40,10 @@ WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹
 
 - [CommonMark 图片语法](https://spec.commonmark.org/0.31.2/#images) 与 [反斜杠转义](https://spec.commonmark.org/0.31.2/#backslash-escapes)：插入 `![说明](<attachments/摘要-文件名>)`，文件名中的 Markdown 标点转义为普通文字。使用当前 Markwon 依赖的 CommonMark 解析器识别内联及引用式图片、链接，代码中的示例不计为图片引用。ZIP 使用相同相对路径，保留正文原文与图片顺序，相同内容路径只写入一次。
 - Markwon 4.6.2 官方实现 [CorePlugin](https://github.com/noties/Markwon/blob/v4.6.2/markwon-core/src/main/java/io/noties/markwon/core/CorePlugin.java)、[AsyncDrawableLoader](https://github.com/noties/Markwon/blob/v4.6.2/markwon-core/src/main/java/io/noties/markwon/image/AsyncDrawableLoader.java)、[AsyncDrawableScheduler](https://github.com/noties/Markwon/blob/v4.6.2/markwon-core/src/main/java/io/noties/markwon/image/AsyncDrawableScheduler.java)：通过核心图片 Span 和自定义加载器显示本笔记附件；后台采样解码并复用同图位图，正文替换或视图离开时取消 Span 加载。加载器仅匹配本笔记附件路径，不访问网络或任意本机文件。图片数据继续沿用已有附件字段，无同步格式变更。
+
+2026-10-20 白板与便签图片分流复核（替代上文仅加载本地图片的限制）：
+
+- [Compose 图形绘制](https://developer.android.com/develop/ui/compose/graphics/draw/overview)：在同一个 `DrawScope` 中先 `drawImage` 再绘制笔画，二者使用相同世界坐标与视口变换；图片位图在后台采样解码。
+- [SVG 2 image](https://www.w3.org/TR/SVG2/embedded.html#ImageElement)：`image` 元素的 `x/y/width/height` 确定图像所在矩形，使用 `href` 内嵌 PNG，放在笔画之前保持涂鸦层次；导出先校正 EXIF 方向以匹配画布。
+- [kotlinx.serialization 严格字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html)：新增 `whiteboard.images` 由同步验证器检查附件引用与有限坐标，旧客户端遇到未知字段拒绝解码，避免误删图片；空列表不写出。
+- [OkHttp 4.12 Call](https://github.com/square/okhttp/blob/parent-4.12.0/okhttp/src/main/kotlin/okhttp3/Call.kt)：远程图片使用异步请求、关闭响应体，协程取消时取消 Call。便签 Markdown 预览及白板远程导入共用有大小限制的 HTTPS 下载器，禁止向 HTTP 降级；不使用同步客户端的认证信息。

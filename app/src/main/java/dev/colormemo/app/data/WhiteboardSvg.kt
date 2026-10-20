@@ -4,11 +4,17 @@ import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardBrush
 
 /** Matches the canvas geometry, layered translucent ink and marker caps. */
-internal fun whiteboardSvg(whiteboard: Whiteboard): String = buildString {
+internal fun whiteboardSvg(whiteboard: Whiteboard, imageDataUrls: Map<String, String> = emptyMap()): String = buildString {
     val canvasWidth = Whiteboard.CANVAS_WIDTH.toInt()
     val canvasHeight = Whiteboard.CANVAS_HEIGHT.toInt()
     append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$canvasWidth\" height=\"$canvasHeight\" viewBox=\"0 0 $canvasWidth $canvasHeight\">\n")
     append("<title>白板</title>\n<rect width=\"$canvasWidth\" height=\"$canvasHeight\" fill=\"#ffffff\"/>\n")
+    whiteboard.images.forEach { image ->
+        val dataUrl = requireNotNull(imageDataUrls[image.attachmentId]) { "白板图片缺失，无法导出。" }
+        append("<image x=\"").append(image.x).append("\" y=\"").append(image.y)
+            .append("\" width=\"").append(image.width).append("\" height=\"").append(image.height)
+            .append("\" preserveAspectRatio=\"none\" href=\"").append(dataUrl).append("\"/>\n")
+    }
     whiteboard.strokes.forEach { stroke ->
         val first = stroke.points.firstOrNull() ?: return@forEach
         val color = "#" + (stroke.color and 0xffffffL).toString(16).padStart(6, '0')

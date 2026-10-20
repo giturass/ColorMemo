@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -54,6 +55,9 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 
 @Composable
 internal fun MemoBrandMark(modifier: Modifier = Modifier, size: Dp = 38.dp) {
@@ -129,14 +133,20 @@ internal fun MarkdownPreview(
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
     val scope = rememberCoroutineScope()
+    val imageScope = remember(markdown, attachments, scope) {
+        CoroutineScope(scope.coroutineContext + Job(scope.coroutineContext[Job]))
+    }
+    DisposableEffect(imageScope) {
+        onDispose { imageScope.cancel() }
+    }
     val currentOnOpen = rememberUpdatedState(onOpenImage)
-    val markwon = remember(context, attachments) {
+    val markwon = remember(context, attachments, imageScope) {
         Markwon.builder(context)
             .usePlugin(HtmlPlugin.create().excludeDefaults(true).addHandler(UnderlineHandler()))
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TablePlugin.create(context))
             .usePlugin(TaskListPlugin.create(context))
-            .usePlugin(MarkdownImagesPlugin(context.resources, attachments, scope) { currentOnOpen.value(it) })
+            .usePlugin(MarkdownImagesPlugin(context.resources, attachments, imageScope) { currentOnOpen.value(it) })
             .build()
     }
     val renderKey = remember(markdown, markwon) { markdown to markwon }

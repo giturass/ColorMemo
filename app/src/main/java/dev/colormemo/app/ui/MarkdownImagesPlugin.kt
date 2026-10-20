@@ -12,6 +12,8 @@ import android.widget.TextView
 import dev.colormemo.app.data.decodeNoteImage
 import dev.colormemo.app.data.isImage
 import dev.colormemo.app.data.markdownPath
+import dev.colormemo.app.data.remoteImageDownloader
+import dev.colormemo.app.data.remoteImageUrl
 import dev.colormemo.core.model.NoteAttachment
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.MarkwonConfiguration
@@ -29,9 +31,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.commonmark.node.Image
 
-/** Resolves only images carried by this note; never opens URLs or arbitrary files. */
+/** Resolves note attachments and HTTPS images; arbitrary local paths stay inaccessible. */
 internal class MarkdownImagesPlugin(
     resources: Resources,
     attachments: List<NoteAttachment>,
@@ -43,17 +47,23 @@ internal class MarkdownImagesPlugin(
         private val jobs = mutableMapOf<AsyncDrawable, Job>()
         private val bitmaps = mutableMapOf<String, Deferred<Bitmap?>>()
         private val decodeDispatcher = Dispatchers.Default.limitedParallelism(2)
+        private val remoteLoads = Semaphore(2)
 
         override fun load(drawable: AsyncDrawable) {
-            val attachment = images[drawable.destination] ?: return
+            val attachment = images[drawable.destination]
+            val remote = if (attachment == null) runCatching { remoteImageUrl(drawable.destination) }.getOrNull() else null
+            if (attachment == null && remote == null) return
             cancel(drawable)
             val job = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     // Multiple Markdown references share one bounded bitmap, not one decode per span.
-                    val bitmap = bitmaps.getOrPut(attachment.sha256) {
+                    val bitmap = bitmaps.getOrPut(attachment?.sha256 ?: remote.toString()) {
                         scope.async(decodeDispatcher) {
                             try {
-                                decodeNoteImage(attachment.bytes(), 768)
+                                if (attachment != null) decodeNoteImage(attachment.bytes(), 768)
+                                else remoteLoads.withPermit {
+                                    decodeNoteImage(remoteImageDownloader.download(requireNotNull(remote)), 768)
+                                }
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (_: Exception) {
@@ -95,14 +105,15 @@ internal class MarkdownImagesPlugin(
         builder.setFactory(Image::class.java) { configuration, props ->
             val destination = ImageProps.DESTINATION.require(props)
             val attachment = images[destination]
-            if (attachment == null) null else {
+            val remote = attachment == null && runCatching { remoteImageUrl(destination) }.isSuccess
+            if (attachment == null && !remote) null else {
                 val span = AsyncDrawableSpan(
                     configuration.theme(),
                     AsyncDrawable(destination, loader, configuration.imageSizeResolver(), null),
                     AsyncDrawableSpan.ALIGN_BOTTOM,
                     false,
                 )
-                if (ImageProps.REPLACEMENT_TEXT_IS_LINK.get(props) == true) span
+                if (attachment == null || ImageProps.REPLACEMENT_TEXT_IS_LINK.get(props) == true) span
                 else arrayOf<Any>(span, object : ClickableSpan() {
                     override fun onClick(widget: View) = onOpen(attachment)
                     override fun updateDrawState(ds: TextPaint) { ds.isUnderlineText = false }

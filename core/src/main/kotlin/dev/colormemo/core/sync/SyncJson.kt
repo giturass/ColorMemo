@@ -124,8 +124,8 @@ object SyncJson {
             if (note.title.length > MAX_TITLE_CHARACTERS || note.content.length > MAX_CONTENT_CHARACTERS) {
                 throw SyncProtocolException("单条笔记过大，未覆盖任何数据。")
             }
-            note.whiteboard?.let(::validateWhiteboard)
             validateAttachments(note.attachments)
+            note.whiteboard?.let { validateWhiteboard(it, note.attachments) }
             if (note.createdAt < 0 || note.updatedAt < 0 || note.updatedAt == Long.MAX_VALUE ||
                 note.deletedAt?.let { it < 0 } == true || note.reminderAt?.let { it < 0 } == true
             ) {
@@ -162,7 +162,19 @@ object SyncJson {
         }
     }
 
-    private fun validateWhiteboard(whiteboard: Whiteboard) {
+    private fun validateWhiteboard(whiteboard: Whiteboard, attachments: List<NoteAttachment>) {
+        if (whiteboard.images.size > Whiteboard.MAX_IMAGES ||
+            whiteboard.images.map { it.id }.toSet().size != whiteboard.images.size
+        ) throw SyncProtocolException("白板图片数量或编号无效，未覆盖任何数据。")
+        val imageIds = attachments.filter { it.mimeType.startsWith("image/", ignoreCase = true) }.map { it.id }.toSet()
+        for (image in whiteboard.images) {
+            validateIdentifier(image.id)
+            if (image.attachmentId !in imageIds ||
+                !image.x.isFinite() || !image.y.isFinite() || !image.width.isFinite() || !image.height.isFinite() ||
+                image.x < 0f || image.y < 0f || image.width <= 0f || image.height <= 0f ||
+                image.x + image.width > Whiteboard.CANVAS_WIDTH || image.y + image.height > Whiteboard.CANVAS_HEIGHT
+            ) throw SyncProtocolException("白板图片引用或位置无效，未覆盖任何数据。")
+        }
         if (whiteboard.strokes.size > Whiteboard.MAX_STROKES ||
             whiteboard.strokes.sumOf { it.points.size.toLong() } > Whiteboard.MAX_POINTS
         ) {

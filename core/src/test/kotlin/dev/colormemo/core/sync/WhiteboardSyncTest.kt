@@ -1,6 +1,8 @@
 package dev.colormemo.core.sync
 
 import dev.colormemo.core.model.Note
+import dev.colormemo.core.model.NoteAttachment
+import dev.colormemo.core.model.WhiteboardImage
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.WhiteboardPoint
@@ -16,6 +18,44 @@ class WhiteboardSyncTest {
     private val note = Note(id = "note", revision = "revision", deviceId = "device", createdAt = 1, updatedAt = 1)
     private val stroke = WhiteboardStroke(points = listOf(WhiteboardPoint(0f, 0f), WhiteboardPoint(1000f, 1000f)))
     private val board = Whiteboard(strokes = listOf(stroke))
+
+    @Test
+    fun imageLayersAndInkRoundTripTogetherWhileOldBoardsOmitImageField() {
+        val attachment = NoteAttachment.create("图片.png", "image/png", byteArrayOf(1, 2))
+        val image = WhiteboardImage("image", attachment.id, 100f, 1100f, 800f, 600f)
+        val source = SyncDocument(notes = listOf(note.copy(whiteboard = board.copy(images = listOf(image)), attachments = listOf(attachment))))
+        assertEquals(source, SyncJson.decode(SyncJson.encode(source)))
+        org.junit.Assert.assertFalse(SyncJson.encode(SyncDocument(notes = listOf(note.copy(whiteboard = board)))).contains("\"images\""))
+        val key = SyncEncryptionKey.parse(SyncEncryptionKey.generate())
+        assertEquals(source, EncryptedSyncJson.decode(EncryptedSyncJson.encode(source, key), key))
+    }
+
+    @Test
+    fun imageLayersRejectMissingAttachmentsInvalidBoundsAndDuplicateIds() {
+        val attachment = NoteAttachment.create("图片.png", "image/png", byteArrayOf(1, 2))
+        val image = WhiteboardImage("image", attachment.id, 0f, 0f, 1000f, 2000f)
+        val source = note.copy(whiteboard = board.copy(images = listOf(image)), attachments = listOf(attachment))
+        val invalidImages = listOf(image.copy(attachmentId = "missing"), image.copy(id = ""), image.copy(x = -1f),
+            image.copy(y = -1f), image.copy(x = 1f), image.copy(y = 1f), image.copy(width = 0f), image.copy(height = -1f))
+        val invalidNotes = invalidImages.map { source.copy(whiteboard = board.copy(images = listOf(it))) } +
+            listOf(source.copy(attachments = emptyList()),
+                source.copy(attachments = listOf(attachment.copy(mimeType = "text/plain"))),
+                source.copy(whiteboard = board.copy(images = listOf(image, image))),
+                source.copy(whiteboard = board.copy(images = List(Whiteboard.MAX_IMAGES + 1) { image.copy(id = "image-$it") })))
+        invalidNotes.forEach { invalid ->
+            val document = SyncDocument(notes = listOf(invalid))
+            assertThrows(SyncProtocolException::class.java) { SyncJson.encode(document) }
+            assertThrows(SyncProtocolException::class.java) { SyncJson.decode(SyncJson.json.encodeToString(document)) }
+        }
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).forEach { value ->
+            listOf(image.copy(x = value), image.copy(y = value), image.copy(width = value), image.copy(height = value)).forEach {
+                assertThrows(SyncProtocolException::class.java) {
+                    val invalid = source.copy(whiteboard = board.copy(images = listOf(it)))
+                    SyncJson.validate(SyncDocument(notes = listOf(invalid)))
+                }
+            }
+        }
+    }
 
     @Test
     fun legacyTextDocumentDecodesAndReencodesWithoutAddingAnyFields() {

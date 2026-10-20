@@ -95,6 +95,8 @@ import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteAttachment
 import dev.colormemo.app.data.attachmentStore
 import dev.colormemo.app.data.readImageAttachment
+import dev.colormemo.app.data.readRemoteImageAttachment
+import dev.colormemo.app.data.decodeNoteImage
 import dev.colormemo.app.data.isImage
 import dev.colormemo.app.data.prepareAttachmentIntent
 import dev.colormemo.app.data.markdownAttachmentReferences
@@ -102,6 +104,7 @@ import dev.colormemo.app.data.markdownPath
 import dev.colormemo.app.data.retainMarkdownAttachments
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardImage
 import dev.colormemo.core.sync.SyncJson
 import java.security.MessageDigest
 import java.util.UUID
@@ -117,6 +120,11 @@ private const val MAX_CONTENT_LENGTH = 100_000
 private val WhiteboardDraftSaver = Saver<Whiteboard?, String>(
     save = { board -> board?.let { SyncJson.json.encodeToString(it) } ?: "" },
     restore = { value -> value.takeIf(String::isNotEmpty)?.let { SyncJson.json.decodeFromString<Whiteboard>(it) } },
+)
+
+private val PendingWhiteboardImageSaver = Saver<WhiteboardImage?, String>(
+    save = { image -> image?.let { SyncJson.json.encodeToString(it) } ?: "" },
+    restore = { value -> value.takeIf(String::isNotEmpty)?.let { SyncJson.json.decodeFromString<WhiteboardImage>(it) } },
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -145,23 +153,30 @@ internal fun NoteEditorScreen(
         )
     }
     var attachments by rememberSaveable(stateSaver = attachmentSaver) { mutableStateOf(note?.attachments.orEmpty()) }
+    var pendingWhiteboardImage by rememberSaveable(stateSaver = PendingWhiteboardImageSaver) { mutableStateOf<WhiteboardImage?>(null) }
     var inlineImageIds by rememberSaveable {
         val references = markdownAttachmentReferences(note?.content.orEmpty())
-        mutableStateOf(note?.attachments.orEmpty().filter { it.isImage && it.markdownPath in references }.map { it.id })
+        mutableStateOf((note?.attachments.orEmpty().filter { it.isImage && it.markdownPath in references }.map { it.id } +
+            note?.whiteboard?.images.orEmpty().map { it.attachmentId }).distinct())
+    }
+    val whiteboardImageIds = remember(whiteboard?.images, pendingWhiteboardImage) {
+        (whiteboard?.images.orEmpty().map { it.attachmentId } + listOfNotNull(pendingWhiteboardImage?.attachmentId)).toSet()
     }
     val attachmentReferences = remember(content.text) { markdownAttachmentReferences(content.text) }
     // Keep removed images in the draft cache for text undo, but omit them from saves.
-    val retainedAttachments = remember(attachments, inlineImageIds, attachmentReferences) {
-        retainMarkdownAttachments(attachments, inlineImageIds, attachmentReferences)
+    val retainedAttachments = remember(attachments, inlineImageIds, attachmentReferences, whiteboardImageIds) {
+        retainMarkdownAttachments(attachments, inlineImageIds, attachmentReferences, whiteboardImageIds)
     }
-    val legacyAttachments = remember(retainedAttachments, attachmentReferences) {
-        retainedAttachments.filter { it.markdownPath !in attachmentReferences }
+    val legacyAttachments = remember(retainedAttachments, attachmentReferences, whiteboardImageIds) {
+        retainedAttachments.filter { it.markdownPath !in attachmentReferences && it.id !in whiteboardImageIds }
     }
     var imageInsertionStart by rememberSaveable { mutableStateOf(0) }
     var imageInsertionEnd by rememberSaveable { mutableStateOf(0) }
     var selectedImageId by rememberSaveable { mutableStateOf<String?>(null) }
     var importingImage by remember { mutableStateOf(false) }
     var imageError by remember { mutableStateOf<String?>(null) }
+    var imageSourceMenu by remember { mutableStateOf(false) }
+    var showRemoteImage by rememberSaveable { mutableStateOf(false) }
     var color by rememberSaveable { mutableStateOf(note?.color ?: NoteColor.DEFAULT) }
     var pinned by rememberSaveable { mutableStateOf(note?.isPinned ?: false) }
     var archived by rememberSaveable { mutableStateOf(note?.isArchived ?: false) }
@@ -186,9 +201,34 @@ internal fun NoteEditorScreen(
     val initialFingerprint = rememberSaveable { draft.fingerprint() }
     val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, retainedAttachments) { draft.fingerprint() }
     val dirty = fingerprint != initialFingerprint
-    val canSave = !saving && !importingImage && (title.isNotBlank() || content.text.isNotBlank() || retainedAttachments.isNotEmpty() ||
+    val canSave = !saving && !importingImage && pendingWhiteboardImage == null && (title.isNotBlank() || content.text.isNotBlank() || retainedAttachments.isNotEmpty() ||
         whiteboard?.strokes?.isNotEmpty() == true || (whiteboard != null && note != null)) &&
         title.length <= MAX_TITLE_LENGTH && content.text.length <= MAX_CONTENT_LENGTH
+    suspend fun insertImage(imported: NoteAttachment) {
+        val attachment = attachments.firstOrNull { it.markdownPath == imported.markdownPath } ?: imported
+        val nextAttachments = retainedAttachments.filterNot { it.id == attachment.id } + attachment
+        require(nextAttachments.size <= NoteAttachment.MAX_PER_NOTE) { "每条笔记最多插入 20 张图片（含已有文件）。" }
+        require(nextAttachments.sumOf { it.sizeBytes.toLong() } <= NoteAttachment.MAX_NOTE_BYTES) { "每条笔记的图片及已有文件合计最多 8 MiB。" }
+        if (whiteboard != null) {
+            require(whiteboard!!.images.size < Whiteboard.MAX_IMAGES) { "每张白板最多插入 20 张图片。" }
+            val image = withContext(Dispatchers.Default) {
+                val bitmap = requireNotNull(decodeNoteImage(attachment.bytes(), 384)) { "图片无法解码，请选择其他图片。" }
+                try {
+                    WhiteboardImage(UUID.randomUUID().toString(), attachment.id, 0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
+                } finally {
+                    bitmap.recycle()
+                }
+            }
+            pendingWhiteboardImage = image
+        } else {
+            content = content.copy(selection = TextRange(imageInsertionStart, imageInsertionEnd)).insertMarkdownImage(attachment)
+            preview = false
+            requestEditorFocus = true
+        }
+        attachments = attachments.filterNot { it.id == attachment.id } + attachment
+        inlineImageIds = (inlineImageIds + attachment.id).distinct()
+    }
+
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             importingImage = true
@@ -196,19 +236,7 @@ internal fun NoteEditorScreen(
             scope.launch {
                 try {
                     val imported = withContext(Dispatchers.IO) { readImageAttachment(context, uri) }
-                    val attachment = attachments.firstOrNull { it.markdownPath == imported.markdownPath } ?: imported
-                    val nextAttachments = retainedAttachments.filterNot { it.id == attachment.id } + attachment
-                    require(nextAttachments.size <= NoteAttachment.MAX_PER_NOTE) { "每条笔记最多插入 20 张图片（含已有文件）。" }
-                    require(nextAttachments.sumOf { it.sizeBytes.toLong() } <= NoteAttachment.MAX_NOTE_BYTES) { "每条笔记的图片及已有文件合计最多 8 MiB。" }
-                    val nextContent = content.copy(selection = TextRange(imageInsertionStart, imageInsertionEnd))
-                        .insertMarkdownImage(attachment)
-                    attachments = attachments.filterNot { it.id == attachment.id } + attachment
-                    inlineImageIds = (inlineImageIds + attachment.id).distinct()
-                    content = nextContent
-                    if (whiteboard == null) {
-                        preview = false
-                        requestEditorFocus = true
-                    } else showWhiteboardDetails = true
+                    insertImage(imported)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: IllegalArgumentException) {
@@ -241,7 +269,7 @@ internal fun NoteEditorScreen(
     val remoteChanged = !state.loading && note != null && currentNote != null && currentNote.revision != note.revision
 
     val close: () -> Unit = {
-        if (!saving && !importingImage) {
+        if (!saving && !importingImage && pendingWhiteboardImage == null) {
             if (dirty && !readOnly) showLeaveDialog = true else onClose()
         }
     }
@@ -345,16 +373,30 @@ internal fun NoteEditorScreen(
                         Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                             Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
                                 IconToggleButton(checked = showPalette, onCheckedChange = { showPalette = it }, enabled = !saving) { Icon(Icons.Outlined.Palette, "选择卡片颜色") }
-                                IconButton(onClick = {
-                                    imageError = null
-                                    imageInsertionStart = if (preview && whiteboard == null) content.text.length else content.selection.start
-                                    imageInsertionEnd = if (preview && whiteboard == null) content.text.length else content.selection.end
-                                    importingImage = true
-                                    focusManager.clearFocus(force = true)
-                                    keyboardController?.hide()
-                                    imagePicker.launch(arrayOf("image/*"))
-                                }, enabled = !saving && !importingImage && retainedAttachments.size < NoteAttachment.MAX_PER_NOTE) {
-                                    Icon(Icons.Outlined.AddPhotoAlternate, "插入图片")
+                                Box {
+                                    IconButton(onClick = {
+                                        imageError = null
+                                        imageInsertionStart = if (preview && whiteboard == null) content.text.length else content.selection.start
+                                        imageInsertionEnd = if (preview && whiteboard == null) content.text.length else content.selection.end
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        imageSourceMenu = true
+                                    }, enabled = !saving && !importingImage && pendingWhiteboardImage == null &&
+                                        (whiteboard == null || whiteboard!!.images.size < Whiteboard.MAX_IMAGES)) {
+                                        Icon(Icons.Outlined.AddPhotoAlternate, "插入图片")
+                                    }
+                                    DropdownMenu(expanded = imageSourceMenu, onDismissRequest = { imageSourceMenu = false }) {
+                                        DropdownMenuItem(text = { Text("本地图片") },
+                                            enabled = retainedAttachments.size < NoteAttachment.MAX_PER_NOTE,
+                                            onClick = {
+                                                imageSourceMenu = false
+                                                importingImage = true
+                                                imagePicker.launch(arrayOf("image/*"))
+                                            })
+                                        DropdownMenuItem(text = { Text("远程图片") },
+                                            enabled = whiteboard == null || retainedAttachments.size < NoteAttachment.MAX_PER_NOTE,
+                                            onClick = { imageSourceMenu = false; showRemoteImage = true })
+                                    }
                                 }
                                 IconButton(onClick = { showReminder = true }, enabled = !saving) { Icon(Icons.Outlined.NotificationsNone, "设置提醒") }
                             }
@@ -432,7 +474,10 @@ internal fun NoteEditorScreen(
                 WhiteboardEditor(
                     whiteboard = whiteboard!!,
                     onWhiteboardChange = { whiteboard = it },
-                    readOnly = readOnly || saving,
+                    attachments = retainedAttachments,
+                    imageToInsert = pendingWhiteboardImage,
+                    onImageInserted = { pendingWhiteboardImage = null },
+                    readOnly = readOnly || saving || importingImage,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             } else if (preview || readOnly) {
@@ -486,6 +531,44 @@ internal fun NoteEditorScreen(
                 }
             }
         }
+    }
+    if (showRemoteImage && !readOnly) {
+        RemoteImageDialog(
+            loading = importingImage,
+            error = imageError,
+            onDismiss = { if (!importingImage) { showRemoteImage = false; imageError = null } },
+            onConfirm = { address ->
+                imageError = null
+                if (whiteboard == null) {
+                    try {
+                        content = content.copy(selection = TextRange(imageInsertionStart, imageInsertionEnd))
+                            .insertMarkdownImage(address)
+                        preview = false
+                        requestEditorFocus = true
+                        showRemoteImage = false
+                    } catch (error: IllegalArgumentException) {
+                        imageError = error.message
+                    }
+                } else {
+                    importingImage = true
+                    scope.launch {
+                        try {
+                            val imported = withContext(Dispatchers.IO) { readRemoteImageAttachment(context, address) }
+                            insertImage(imported)
+                            showRemoteImage = false
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: IllegalArgumentException) {
+                            imageError = error.message ?: "无法插入图片。"
+                        } catch (_: Exception) {
+                            imageError = "无法下载图片，请检查地址和网络后重试。"
+                        } finally {
+                            importingImage = false
+                        }
+                    }
+                }
+            },
+        )
     }
     retainedAttachments.firstOrNull { it.id == selectedImageId }?.let { image ->
         NoteImageDialog(
@@ -557,10 +640,10 @@ internal fun NoteEditorScreen(
             title = { Text(if (whiteboard != null) "在白板上记录" else "用 Markdown 记录") },
             text = {
                 if (whiteboard != null) {
-                    Text("单指或触控笔写画，双指拖动画布或捏合缩放。画布向下延伸，双指向上拖动即可继续在下方创作；双指捏合缩小可查看完整画布。\n\n画笔设置可选择细签字笔、水彩笔、马克笔，并调整颜色和八档粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。")
+                    Text("单指或触控笔写画，双指拖动画布或捏合缩放。画布向下延伸，双指向上拖动即可继续在下方创作；双指捏合缩小可查看完整画布。\n\n点击图片按钮，选择本地图片或输入远程图片地址。图片会放在当前可见画布的中央，可直接在图片上涂鸦，保存后离线也能继续编辑。\n\n画笔设置可选择细签字笔、水彩笔、马克笔，并调整颜色和八档粗细。橡皮只擦除笔画，保留图片；插图、绘画和清空均可撤销。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。")
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text("用底部工具栏插入格式，点击「预览」查看排版。点击左下角图片按钮，在光标处插入 Markdown 图片；可移动图片语法调整位置，删除引用即可移除图片。预览中点击图片可查看原图。")
+                        Text("用底部工具栏插入格式，点击「预览」查看排版。点击左下角图片按钮，选择本地图片或输入远程图片地址，在光标处插入 Markdown 图片；可移动图片语法调整位置，删除引用即可移除图片。预览中点击本地图片可查看原图；远程图片需联网加载。")
                         Text("# 一级标题\n## 二级标题\n**加粗文字**\n*斜体文字*\n<u>下划线文字</u>\n~~删除线文字~~\n- 列表项\n- [ ] 待办事项\n- [x] 已完成\n[链接文字](https://example.com)\n> 引用\n`行内代码`", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                         Text("也支持代码块、表格和删除线。", style = MaterialTheme.typography.bodySmall)
                     }

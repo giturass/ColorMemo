@@ -6,6 +6,7 @@ import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
+import dev.colormemo.core.model.WhiteboardImage
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
@@ -16,6 +17,30 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 class MarkdownArchiveTest {
+    @Test
+    fun whiteboardExportEmbedsImageBelowInkWithoutAddingItToTheNoteText() {
+        val attachment = NoteAttachment.create("照片.png", "image/png", byteArrayOf(1, 2, 3))
+        val image = WhiteboardImage("image", attachment.id, 100f, 1200f, 800f, 400f)
+        val board = Whiteboard(
+            images = listOf(image),
+            strokes = listOf(WhiteboardStroke(points = listOf(WhiteboardPoint(200f, 1300f)))),
+        )
+        val note = Note(title = "图片白板", content = "说明", whiteboard = board, attachments = listOf(attachment))
+        val dataUrl = "data:image/png;base64,${attachment.dataBase64}"
+        val entries = archiveEntries(listOf(note)) { dataUrl }
+        val svg = entries.getValue("notes/0001-图片白板.svg").toString(Charsets.UTF_8)
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(svg.byteInputStream())
+        val embedded = document.getElementsByTagName("image").item(0) as Element
+        assertEquals("100.0", embedded.getAttribute("x"))
+        assertEquals("1200.0", embedded.getAttribute("y"))
+        assertEquals("800.0", embedded.getAttribute("width"))
+        assertEquals("400.0", embedded.getAttribute("height"))
+        assertEquals(dataUrl, embedded.getAttribute("href"))
+        assertTrue(svg.indexOf("<image") < svg.indexOf("<circle"))
+        assertEquals("# 图片白板\n\n说明\n\n![白板](<0001-图片白板.svg>)\n", entries.getValue("notes/0001-图片白板.md").toString(Charsets.UTF_8))
+        org.junit.Assert.assertArrayEquals(attachment.bytes(), entries.getValue("notes/0001-图片白板-attachments/1-照片.png"))
+    }
+
     @Test
     fun svgPreservesTapColorWidthAndRoundPolyline() {
         val whiteboard = Whiteboard(
@@ -182,9 +207,9 @@ class MarkdownArchiveTest {
         assertTrue(codeMarkdown.contains("![照片.png](<0002-代码-attachments/1-照片.png>)"))
     }
 
-    private fun archiveEntries(notes: List<Note>): Map<String, ByteArray> {
+    private fun archiveEntries(notes: List<Note>, imageDataUrl: (NoteAttachment) -> String = ::whiteboardImageDataUrl): Map<String, ByteArray> {
         val output = ByteArrayOutputStream()
-        writeMarkdownArchive(notes, output)
+        writeMarkdownArchive(notes, output, imageDataUrl)
         val entries = linkedMapOf<String, ByteArray>()
         ZipInputStream(output.toByteArray().inputStream()).use { zip ->
             while (true) {

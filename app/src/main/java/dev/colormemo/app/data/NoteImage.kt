@@ -6,6 +6,20 @@ import android.graphics.Matrix
 import androidx.exifinterface.media.ExifInterface
 import dev.colormemo.core.model.NoteAttachment
 import java.io.IOException
+import java.io.ByteArrayOutputStream
+import java.util.Base64
+
+/** Portable SVG images use bounded PNG pixels with EXIF orientation already applied. */
+internal fun whiteboardImageDataUrl(attachment: NoteAttachment): String {
+    val bitmap = requireNotNull(decodeNoteImage(attachment.bytes(), 2048)) { "白板图片无法解码，无法导出。" }
+    try {
+        val output = ByteArrayOutputStream()
+        check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "白板图片转换失败。" }
+        return "data:image/png;base64," + Base64.getEncoder().encodeToString(output.toByteArray())
+    } finally {
+        bitmap.recycle()
+    }
+}
 
 internal val NoteAttachment.isImage: Boolean
     get() = mimeType.startsWith("image/", ignoreCase = true)

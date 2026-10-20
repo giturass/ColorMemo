@@ -16,6 +16,16 @@ class MarkdownImageEditingTest {
     private val attachment = NoteAttachment.create("照片 [1]*_&.png", "image/png", byteArrayOf(1, 2))
 
     @Test
+    fun remoteUrlKeepsQueryEntitiesParenthesesAndEncodedCharacters() {
+        val url = "https://example.com/照片(1).png?x=1&amp;name=%E4%B8%AD&copy;=2"
+        val result = TextFieldValue("前后", TextRange(1)).insertMarkdownImage(url)
+        val image = Parser.builder().build().parse(result.text).firstChild.next.firstChild as Image
+        assertEquals(url, image.destination)
+        assertEquals("图片", (image.firstChild as Text).literal)
+        assertEquals(result.text.indexOf("后"), result.selection.start)
+    }
+
+    @Test
     fun insertsAtCursorBetweenParagraphsAndPlacesCursorAfterImage() {
         val result = TextFieldValue("前文后文", TextRange(2)).insertMarkdownImage(attachment)
         val document = Parser.builder().build().parse(result.text)

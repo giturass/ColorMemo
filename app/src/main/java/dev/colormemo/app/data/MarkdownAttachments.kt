@@ -43,4 +43,7 @@ internal fun retainMarkdownAttachments(
     attachments: List<NoteAttachment>,
     inlineImageIds: List<String>,
     references: Set<String>,
-): List<NoteAttachment> = attachments.filter { it.id !in inlineImageIds || it.markdownPath in references }
+    whiteboardImageIds: Set<String> = emptySet(),
+): List<NoteAttachment> = attachments.filter {
+    it.id !in inlineImageIds || it.markdownPath in references || it.id in whiteboardImageIds
+}

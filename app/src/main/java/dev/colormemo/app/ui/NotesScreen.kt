@@ -513,14 +513,14 @@ private fun MemoCard(
                     Spacer(Modifier.height(8.dp))
                 }
                 note.whiteboard?.let { board ->
-                    WhiteboardPreview(board, Modifier.fillMaxWidth().padding(bottom = 12.dp))
+                    WhiteboardPreview(board, Modifier.fillMaxWidth().padding(bottom = 12.dp), attachments = note.attachments)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Icon(Icons.Outlined.Draw, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("白板", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(6.dp))
                 }
-                note.attachments.firstOrNull { it.isImage }?.let { image ->
+                note.attachments.firstOrNull { image -> image.isImage && note.whiteboard?.images.orEmpty().none { it.attachmentId == image.id } }?.let { image ->
                     NoteImagePreview(image, Modifier.fillMaxWidth().height(120.dp).padding(bottom = 12.dp))
                 }
                 if (note.title.isNotBlank()) {

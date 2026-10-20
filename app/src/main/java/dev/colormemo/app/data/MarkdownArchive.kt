@@ -1,12 +1,17 @@
 package dev.colormemo.app.data
 
 import dev.colormemo.core.model.Note
+import dev.colormemo.core.model.NoteAttachment
 import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /** Preserves inline image paths and includes portable whiteboards and legacy attachments. */
-internal fun writeMarkdownArchive(notes: List<Note>, output: OutputStream) {
+internal fun writeMarkdownArchive(
+    notes: List<Note>,
+    output: OutputStream,
+    imageDataUrl: (NoteAttachment) -> String = ::whiteboardImageDataUrl,
+) {
     val visibleNotes = notes.filter { it.deletedAt == null && !it.isPurged }
         .sortedWith(compareBy({ it.createdAt }, { it.id }))
     ZipOutputStream(output).use { zip ->
@@ -18,6 +23,7 @@ internal fun writeMarkdownArchive(notes: List<Note>, output: OutputStream) {
             val basename = "${(index + 1).toString().padStart(4, '0')}-$safeName"
             val folder = if (note.isArchived) "archive/" else "notes/"
             val references = markdownAttachmentReferences(note.content)
+            val boardImageIds = note.whiteboard?.images.orEmpty().map { it.attachmentId }.toSet()
             val attachmentNames = note.attachments.mapIndexed { attachmentIndex, attachment ->
                 val safeFile = attachment.fileName.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_")
                     .trim(' ', '.').take(100).ifBlank { "attachment" }
@@ -30,7 +36,7 @@ internal fun writeMarkdownArchive(notes: List<Note>, output: OutputStream) {
                 if (!endsWith("\n")) append('\n')
                 if (note.whiteboard != null) append("\n![白板](<").append(basename).append(".svg>)\n")
                 note.attachments.forEachIndexed attachment@ { attachmentIndex, attachment ->
-                    if (attachment.markdownPath in references) return@attachment
+                    if (attachment.markdownPath in references || attachment.id in boardImageIds) return@attachment
                     val label = attachment.fileName.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
                     append('\n')
                     if (attachment.isImage) append('!')
@@ -47,7 +53,8 @@ internal fun writeMarkdownArchive(notes: List<Note>, output: OutputStream) {
                 }
             }
             note.whiteboard?.let { whiteboard ->
-                zip.writeTextEntry("$folder$basename.svg", whiteboardSvg(whiteboard))
+                val imageData = note.attachments.filter { it.id in boardImageIds }.associate { it.id to imageDataUrl(it) }
+                zip.writeTextEntry("$folder$basename.svg", whiteboardSvg(whiteboard, imageData))
             }
         }
     }

@@ -5,17 +5,34 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /** Fixed world coordinates keep strokes stable across screen sizes. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class Whiteboard(val strokes: List<WhiteboardStroke> = emptyList()) {
+data class Whiteboard(
+    val strokes: List<WhiteboardStroke> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val images: List<WhiteboardImage> = emptyList(),
+) {
     companion object {
         const val CANVAS_WIDTH: Float = 1000f
         const val CANVAS_HEIGHT: Float = 2000f
         const val MAX_STROKES: Int = 500
         const val MAX_POINTS: Int = 6000
+        const val MAX_IMAGES: Int = 20
         const val MIN_STROKE_WIDTH: Float = 1f
         const val MAX_STROKE_WIDTH: Float = 40f
     }
 }
+
+/** Images share the stroke coordinate system and are painted below all ink. */
+@Serializable
+data class WhiteboardImage(
+    val id: String,
+    val attachmentId: String,
+    val x: Float,
+    val y: Float,
+    val width: Float,
+    val height: Float,
+)
 
 @Serializable
 enum class WhiteboardBrush { FINELINER, WATERCOLOR, MARKER }
