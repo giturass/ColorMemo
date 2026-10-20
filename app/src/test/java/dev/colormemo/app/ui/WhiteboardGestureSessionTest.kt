@@ -181,6 +181,39 @@ class WhiteboardGestureSessionTest {
         }
     }
 
+    @Test
+    fun eraserRadiusControlsTapAndSwipeReach() {
+        val before = Whiteboard(listOf(stroke(100f, 500f, 900f, 500f)))
+        val small = WhiteboardGestureSession(before, true, 0xFF202124L, 3f, eraserRadius = 8f)
+        small.begin(point(100f, 550f))
+        small.update(point(900f, 550f), finalPoint = true)
+        assertSame(before, small.working)
+
+        val largeTap = WhiteboardGestureSession(before, true, 0xFF202124L, 3f, eraserRadius = 56f)
+        largeTap.begin(point(500f, 550f))
+        assertTrue(largeTap.working.strokes.isEmpty())
+
+        val largeSwipe = WhiteboardGestureSession(before, true, 0xFF202124L, 3f, eraserRadius = 56f)
+        largeSwipe.begin(point(0f, 550f))
+        assertSame(before, largeSwipe.working)
+        largeSwipe.update(point(1000f, 550f), finalPoint = true)
+        assertTrue(largeSwipe.working.strokes.isEmpty())
+        largeSwipe.startNavigation()
+        assertSame(before, largeSwipe.working)
+    }
+
+    @Test
+    fun eraserRadiusIsConstrainedAndStillWorksAtCapacity() {
+        val stroke = WhiteboardStroke(points = List(Whiteboard.MAX_POINTS) { point(500f, 500f) })
+        val before = Whiteboard(listOf(stroke))
+        val tooSmall = WhiteboardGestureSession(before, true, 0xFF202124L, 3f, eraserRadius = -10f)
+        tooSmall.begin(point(500f, 510f))
+        assertTrue(tooSmall.working.strokes.isEmpty())
+        val tooLarge = WhiteboardGestureSession(before, true, 0xFF202124L, 3f, eraserRadius = 1000f)
+        tooLarge.begin(point(500f, 650f))
+        assertSame(before, tooLarge.working)
+    }
+
     private fun session(
         before: Whiteboard = Whiteboard(),
         erasing: Boolean = false,

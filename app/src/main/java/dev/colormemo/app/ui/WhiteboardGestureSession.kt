@@ -6,7 +6,9 @@ import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
 
 private const val GESTURE_POINT_SPACING = 2.5f
-private const val GESTURE_ERASER_RADIUS = 28f
+internal const val DEFAULT_ERASER_RADIUS = 28f
+internal const val MIN_ERASER_RADIUS = 8f
+internal const val MAX_ERASER_RADIUS = 100f
 
 /**
  * Keeps the edits made by one pointer gesture reversible until all pointers are lifted.
@@ -19,7 +21,10 @@ internal class WhiteboardGestureSession(
     private val color: Long,
     private val width: Float,
     private val brush: WhiteboardBrush = WhiteboardBrush.FINELINER,
+    private val shape: WhiteboardShape? = null,
+    eraserRadius: Float = DEFAULT_ERASER_RADIUS,
 ) {
+    private val eraserRadius = eraserRadius.coerceIn(MIN_ERASER_RADIUS, MAX_ERASER_RADIUS)
     var working: Whiteboard = before
         private set
     var limitReached: Boolean = false
@@ -30,6 +35,7 @@ internal class WhiteboardGestureSession(
         get() = working != before
 
     private var started = false
+    private var startPoint: WhiteboardPoint? = null
     private var lastPoint: WhiteboardPoint? = null
     private var pointCount = before.strokes.sumOf { it.points.size }
     private var strokeStarted = false
@@ -37,13 +43,14 @@ internal class WhiteboardGestureSession(
     fun begin(point: WhiteboardPoint): Whiteboard {
         if (started || isNavigating) return working
         started = true
+        startPoint = point
         lastPoint = point
         if (erasing) {
-            working = working.eraseBetween(point, point, GESTURE_ERASER_RADIUS)
+            working = working.eraseBetween(point, point, eraserRadius)
         } else if (working.strokes.size >= Whiteboard.MAX_STROKES || pointCount >= Whiteboard.MAX_POINTS) {
             // Keep the gesture alive: a second finger must still be able to navigate.
             limitReached = true
-        } else {
+        } else if (shape == null) {
             working = working.copy(strokes = working.strokes + WhiteboardStroke(
                 color = color,
                 width = width,
@@ -60,8 +67,16 @@ internal class WhiteboardGestureSession(
         if (isNavigating) return working
         val previous = lastPoint ?: return working
         if (erasing) {
-            working = working.eraseBetween(previous, point, GESTURE_ERASER_RADIUS)
+            working = working.eraseBetween(previous, point, eraserRadius)
             lastPoint = point
+        } else if (shape != null) {
+            val points = shape.points(startPoint ?: return working, point, width)
+            limitReached = points.isNotEmpty() &&
+                (before.strokes.size >= Whiteboard.MAX_STROKES || pointCount + points.size > Whiteboard.MAX_POINTS)
+            // Replace the preview rather than accumulating pointer samples or partial shapes.
+            working = if (points.isEmpty() || limitReached) before else before.copy(
+                strokes = before.strokes + WhiteboardStroke(color, width, points, brush),
+            )
         } else if (strokeStarted && point != previous &&
             (finalPoint || point.isFarEnoughFrom(previous, GESTURE_POINT_SPACING))
         ) {

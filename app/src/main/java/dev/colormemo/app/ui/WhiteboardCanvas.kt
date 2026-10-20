@@ -30,11 +30,15 @@ import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -83,9 +87,8 @@ import dev.colormemo.core.model.NoteAttachment
 import kotlin.math.roundToInt
 
 private const val HISTORY_LIMIT = 25
-private const val ERASER_RADIUS = 28f
 
-private enum class WhiteboardTool { PEN, ERASER }
+private enum class WhiteboardTool { PEN, SHAPE, ERASER }
 
 private val ViewportSaver = listSaver<WhiteboardViewport, Float>(
     save = { listOf(it.centerX, it.centerY, it.zoom) },
@@ -119,7 +122,11 @@ internal fun WhiteboardEditor(
     var lineWidth by rememberSaveable { mutableStateOf(3f) }
     var brush by rememberSaveable { mutableStateOf(WhiteboardBrush.FINELINER) }
     var tool by rememberSaveable { mutableStateOf(WhiteboardTool.PEN) }
+    var shape by rememberSaveable { mutableStateOf(WhiteboardShape.RECTANGLE) }
+    var showShapePicker by rememberSaveable { mutableStateOf(false) }
     var showBrushSettings by rememberSaveable { mutableStateOf(false) }
+    var eraserRadius by rememberSaveable { mutableStateOf(DEFAULT_ERASER_RADIUS) }
+    var showEraserSettings by rememberSaveable { mutableStateOf(false) }
     var viewport by rememberSaveable(stateSaver = ViewportSaver) { mutableStateOf(WhiteboardViewport()) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val erasing = tool == WhiteboardTool.ERASER
@@ -155,7 +162,9 @@ internal fun WhiteboardEditor(
     LaunchedEffect(readOnly) {
         if (readOnly) {
             showClearDialog = false
+            showShapePicker = false
             showBrushSettings = false
+            showEraserSettings = false
         }
     }
     LaunchedEffect(imageToInsert, canvasSize, readOnly) {
@@ -175,10 +184,39 @@ internal fun WhiteboardEditor(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconToggleButton(checked = !erasing, onCheckedChange = { tool = WhiteboardTool.PEN }, enabled = controlsEnabled) {
+                IconToggleButton(checked = tool == WhiteboardTool.PEN, onCheckedChange = { tool = WhiteboardTool.PEN }, enabled = controlsEnabled) {
                     Icon(Icons.Outlined.Draw, "画笔")
                 }
-                IconToggleButton(checked = erasing, onCheckedChange = { tool = WhiteboardTool.ERASER }, enabled = controlsEnabled) {
+                Box {
+                    FilterChip(
+                        selected = tool == WhiteboardTool.SHAPE,
+                        onClick = { showShapePicker = true },
+                        enabled = controlsEnabled,
+                        leadingIcon = { WhiteboardShapeIcon(shape) },
+                        label = { Text(if (tool == WhiteboardTool.SHAPE) shape.displayName else "图形") },
+                        modifier = Modifier.semantics { contentDescription = "图形模板：${shape.displayName}" },
+                    )
+                    DropdownMenu(expanded = showShapePicker && controlsEnabled, onDismissRequest = { showShapePicker = false }) {
+                        WhiteboardShape.entries.forEach { template ->
+                            DropdownMenuItem(
+                                text = { Text(template.displayName) },
+                                leadingIcon = { WhiteboardShapeIcon(template) },
+                                trailingIcon = {
+                                    if (tool == WhiteboardTool.SHAPE && shape == template) Icon(Icons.Outlined.Check, "已选中")
+                                },
+                                onClick = {
+                                    shape = template
+                                    tool = WhiteboardTool.SHAPE
+                                    showShapePicker = false
+                                    limitReached = false
+                                },
+                            )
+                        }
+                    }
+                }
+                IconToggleButton(checked = erasing, onCheckedChange = {
+                    if (erasing) showEraserSettings = true else tool = WhiteboardTool.ERASER
+                }, enabled = controlsEnabled) {
                     Icon(painterResource(R.drawable.ic_eraser), "橡皮")
                 }
                 IconButton(
@@ -200,13 +238,19 @@ internal fun WhiteboardEditor(
                     },
                     enabled = controlsEnabled && redoBoards.isNotEmpty(),
                 ) { Icon(Icons.AutoMirrored.Outlined.Redo, "重做白板操作") }
-                IconButton(onClick = { showBrushSettings = true }, enabled = controlsEnabled) {
-                    Icon(Icons.Outlined.Tune, "画笔类型、颜色与粗细")
+                IconButton(onClick = {
+                    if (erasing) showEraserSettings = true else showBrushSettings = true
+                }, enabled = controlsEnabled) {
+                    Icon(Icons.Outlined.Tune, if (erasing) "橡皮擦除范围" else "画笔类型、颜色与粗细")
                 }
                 IconButton(
                     onClick = { showClearDialog = true },
                     enabled = controlsEnabled && (whiteboard.strokes.isNotEmpty() || whiteboard.images.isNotEmpty()),
                 ) { Icon(Icons.Outlined.DeleteOutline, "清空白板") }
+            }
+            if (tool == WhiteboardTool.SHAPE) {
+                Text("${shape.displayName}：在画布上拖动绘制，松手完成", Modifier.padding(horizontal = 12.dp),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -226,10 +270,12 @@ internal fun WhiteboardEditor(
                     .semantics {
                         contentDescription = when {
                             readOnly -> "白板预览，可拖动和双指缩放"
+                            tool == WhiteboardTool.SHAPE -> "白板画布，单指拖动绘制${shape.displayName}，双指拖动和缩放"
+                            erasing -> "白板画布，单指擦除，双指拖动和缩放"
                             else -> "白板画布，单指绘画或擦除，双指拖动和缩放"
                         }
                     }
-                    .pointerInput(readOnly, ink, lineWidth, brush, tool, canvasSize) {
+                    .pointerInput(readOnly, ink, lineWidth, brush, tool, shape, eraserRadius, canvasSize) {
                         awaitEachGesture {
                             val down = awaitFirstDown(pass = PointerEventPass.Initial)
                             val width = size.width.toFloat()
@@ -240,7 +286,8 @@ internal fun WhiteboardEditor(
                             currentEvent.changes.forEach { it.consume() }
                             focusManager.clearFocus(force = true)
                             keyboardController?.hide()
-                            val gesture = WhiteboardGestureSession(currentBoard, erasing, ink, lineWidth, brush)
+                            val gesture = WhiteboardGestureSession(currentBoard, erasing, ink, lineWidth, brush,
+                                shape = shape.takeIf { tool == WhiteboardTool.SHAPE }, eraserRadius = eraserRadius)
                             // A stroke keeps one transform; navigation takes over for the rest
                             // of this touch sequence as soon as another finger arrives.
                             val transform = viewport.transform(width, height)
@@ -327,7 +374,7 @@ internal fun WhiteboardEditor(
                         eraserPosition?.let { point ->
                             drawCircle(
                                 Color(0xFF5F6368),
-                                radius = ERASER_RADIUS * transform.scale,
+                                radius = eraserRadius * transform.scale,
                                 center = origin + Offset(point.x * transform.scale, point.y * transform.scale),
                                 style = Stroke(width = 1.5.dp.toPx()),
                             )
@@ -371,7 +418,7 @@ internal fun WhiteboardEditor(
                                         WhiteboardBrush.WATERCOLOR -> 24f
                                         WhiteboardBrush.MARKER -> 16f
                                     }
-                                    tool = WhiteboardTool.PEN
+                                    if (erasing) tool = WhiteboardTool.PEN
                                 },
                                 label = { Text(type.displayName) },
                             )
@@ -383,7 +430,7 @@ internal fun WhiteboardEditor(
                             val selected = ink == color
                             Box(
                                 Modifier.size(48.dp).clip(CircleShape)
-                                    .selectable(selected = selected, role = Role.RadioButton, onClick = { ink = color; tool = WhiteboardTool.PEN })
+                                    .selectable(selected = selected, role = Role.RadioButton, onClick = { ink = color; if (erasing) tool = WhiteboardTool.PEN })
                                     .semantics { contentDescription = "${label}画笔" }
                                     .padding(5.dp)
                                     .border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape)
@@ -401,7 +448,7 @@ internal fun WhiteboardEditor(
                                 val selected = lineWidth == width
                                 Box(
                                     Modifier.size(52.dp).clip(CircleShape)
-                                        .selectable(selected, role = Role.RadioButton, onClick = { lineWidth = width; tool = WhiteboardTool.PEN })
+                                        .selectable(selected, role = Role.RadioButton, onClick = { lineWidth = width; if (erasing) tool = WhiteboardTool.PEN })
                                         .semantics { contentDescription = "粗细第${rowIndex * 4 + columnIndex + 1}档，共8档" }
                                         .padding(3.dp)
                                         .border(if (selected) 2.dp else 0.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape),
@@ -427,6 +474,35 @@ internal fun WhiteboardEditor(
         )
     }
 
+    if (showEraserSettings && !readOnly) {
+        AlertDialog(
+            onDismissRequest = { showEraserSettings = false },
+            title = { Text("橡皮设置") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("拖动调整擦除范围。触及笔画会整笔擦除，图片保留。")
+                    Canvas(Modifier.fillMaxWidth().height(140.dp).clip(MaterialTheme.shapes.small).background(Color.White)) {
+                        val radius = eraserRadius / MAX_ERASER_RADIUS * (size.minDimension / 2f - 8.dp.toPx())
+                        drawCircle(Color(0x145F6368), radius)
+                        drawCircle(Color(0xFF5F6368), radius, style = Stroke(1.5.dp.toPx()))
+                    }
+                    Slider(
+                        value = eraserRadius,
+                        onValueChange = { eraserRadius = it },
+                        valueRange = MIN_ERASER_RADIUS..MAX_ERASER_RADIUS,
+                        steps = 22,
+                        modifier = Modifier.semantics { contentDescription = "橡皮擦除范围" },
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("小")
+                        Text("大")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showEraserSettings = false }) { Text("完成") } },
+        )
+    }
+
     if (showClearDialog && !readOnly) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
@@ -442,6 +518,30 @@ internal fun WhiteboardEditor(
             },
             dismissButton = { TextButton(onClick = { showClearDialog = false }) { Text("取消") } },
         )
+    }
+}
+
+@Composable
+private fun WhiteboardShapeIcon(shape: WhiteboardShape) {
+    val tint = LocalContentColor.current
+    Canvas(Modifier.size(24.dp)) {
+        val open = shape == WhiteboardShape.LINE || shape == WhiteboardShape.ARROW
+        val start = when {
+            open -> WhiteboardPoint(140f, 780f)
+            shape == WhiteboardShape.CIRCLE -> WhiteboardPoint(220f, 220f)
+            else -> WhiteboardPoint(140f, 220f)
+        }
+        val end = if (open) WhiteboardPoint(860f, 220f) else WhiteboardPoint(860f, 780f)
+        // Enlarge arrowheads so the template remains recognisable at icon size.
+        val points = shape.points(start, end, 80f)
+        val path = Path().apply {
+            points.forEachIndexed { index, point ->
+                val x = point.x / 1000f * size.width
+                val y = point.y / 1000f * size.height
+                if (index == 0) moveTo(x, y) else lineTo(x, y)
+            }
+        }
+        drawPath(path, tint, style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
