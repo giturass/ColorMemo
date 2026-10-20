@@ -37,7 +37,8 @@ internal class WhiteboardGestureSession(
     private var started = false
     private var startPoint: WhiteboardPoint? = null
     private var lastPoint: WhiteboardPoint? = null
-    private var pointCount = before.strokes.sumOf { it.points.size }
+    private val existingPointCount = before.strokes.sumOf { it.points.size }
+    private var pointCount = existingPointCount
     private var strokeStarted = false
 
     fun begin(point: WhiteboardPoint): Whiteboard {
@@ -71,12 +72,7 @@ internal class WhiteboardGestureSession(
             lastPoint = point
         } else if (shape != null) {
             val points = shape.points(startPoint ?: return working, point, width)
-            limitReached = points.isNotEmpty() &&
-                (before.strokes.size >= Whiteboard.MAX_STROKES || pointCount + points.size > Whiteboard.MAX_POINTS)
-            // Replace the preview rather than accumulating pointer samples or partial shapes.
-            working = if (points.isEmpty() || limitReached) before else before.copy(
-                strokes = before.strokes + WhiteboardStroke(color, width, points, brush),
-            )
+            previewStroke(points)
         } else if (strokeStarted && point != previous &&
             (finalPoint || point.isFarEnoughFrom(previous, GESTURE_POINT_SPACING))
         ) {
@@ -91,6 +87,17 @@ internal class WhiteboardGestureSession(
                 lastPoint = point
             }
         }
+        return working
+    }
+
+    /** Shapes and compass arcs remain one reversible stroke throughout the gesture. */
+    fun previewStroke(points: List<WhiteboardPoint>): Whiteboard {
+        if (isNavigating) return working
+        limitReached = points.size >= 2 &&
+            (before.strokes.size >= Whiteboard.MAX_STROKES || existingPointCount + points.size > Whiteboard.MAX_POINTS)
+        working = if (points.size < 2 || limitReached) before else before.copy(
+            strokes = before.strokes + WhiteboardStroke(color, width, points, brush),
+        )
         return working
     }
 

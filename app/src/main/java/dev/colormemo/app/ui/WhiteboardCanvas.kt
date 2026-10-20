@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardPoint
+import dev.colormemo.core.model.WhiteboardStroke
 import dev.colormemo.core.model.WhiteboardImage
 import dev.colormemo.core.model.WhiteboardText
 import dev.colormemo.core.model.NoteAttachment
@@ -154,8 +155,11 @@ internal fun WhiteboardEditor(
     var tool by rememberSaveable { mutableStateOf(WhiteboardTool.PEN) }
     var shape by rememberSaveable { mutableStateOf(WhiteboardShape.RECTANGLE) }
     var instrument by rememberSaveable { mutableStateOf(WhiteboardInstrument.COMPASS) }
-    var instrumentState by rememberSaveable(stateSaver = InstrumentSaver) { mutableStateOf(WhiteboardInstrumentState()) }
-    var instrumentPlaced by rememberSaveable { mutableStateOf(false) }
+    val compassState = rememberSaveable(stateSaver = InstrumentSaver) { mutableStateOf(WhiteboardInstrumentState()) }
+    val protractorState = rememberSaveable(stateSaver = InstrumentSaver) { mutableStateOf(WhiteboardInstrumentState()) }
+    var instrumentState by if (instrument == WhiteboardInstrument.COMPASS) compassState else protractorState
+    var compassPlaced by rememberSaveable { mutableStateOf(false) }
+    var protractorPlaced by rememberSaveable { mutableStateOf(false) }
     var showGuides by rememberSaveable { mutableStateOf(false) }
     var showTextEditor by rememberSaveable { mutableStateOf(false) }
     var editingTextId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -168,6 +172,8 @@ internal fun WhiteboardEditor(
     var showEraserSettings by rememberSaveable { mutableStateOf(false) }
     var viewport by rememberSaveable(stateSaver = ViewportSaver) { mutableStateOf(WhiteboardViewport()) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    var shapeBase by remember(tool, shape, readOnly) { mutableStateOf<WhiteboardTwoEdgeBase?>(null) }
+    var shapePreview by remember(tool, shape, readOnly) { mutableStateOf(emptyList<WhiteboardPoint>()) }
     val erasing = tool == WhiteboardTool.ERASER
     var drawing by remember { mutableStateOf(false) }
     var eraserPosition by remember { mutableStateOf<WhiteboardPoint?>(null) }
@@ -221,6 +227,8 @@ internal fun WhiteboardEditor(
         if (whiteboard != lastPublished) {
             undoBoards = emptyList()
             redoBoards = emptyList()
+            shapeBase = null
+            shapePreview = emptyList()
             lastPublished = whiteboard
             limitReached = false
         }
@@ -296,9 +304,12 @@ internal fun WhiteboardEditor(
                                     if (tool == WhiteboardTool.INSTRUMENT && instrument == template) Icon(Icons.Outlined.Check, "已选中")
                                 },
                                 onClick = {
-                                    if (!instrumentPlaced) {
-                                        instrumentState = visibleInstrumentState()
-                                        instrumentPlaced = true
+                                    if (template == WhiteboardInstrument.COMPASS && !compassPlaced) {
+                                        compassState.value = visibleInstrumentState()
+                                        compassPlaced = true
+                                    } else if (template == WhiteboardInstrument.PROTRACTOR && !protractorPlaced) {
+                                        protractorState.value = visibleInstrumentState()
+                                        protractorPlaced = true
                                     }
                                     instrument = template
                                     tool = WhiteboardTool.INSTRUMENT
@@ -323,13 +334,18 @@ internal fun WhiteboardEditor(
                 }
                 IconButton(
                     onClick = {
-                        val previous = undoBoards.last()
-                        undoBoards = undoBoards.dropLast(1)
-                        redoBoards = (redoBoards + currentBoard).takeLast(HISTORY_LIMIT)
                         limitReached = false
-                        publish(previous)
+                        if (shapeBase != null) {
+                            shapeBase = null
+                            shapePreview = emptyList()
+                        } else {
+                            val previous = undoBoards.last()
+                            undoBoards = undoBoards.dropLast(1)
+                            redoBoards = (redoBoards + currentBoard).takeLast(HISTORY_LIMIT)
+                            publish(previous)
+                        }
                     },
-                    enabled = controlsEnabled && undoBoards.isNotEmpty(),
+                    enabled = controlsEnabled && (shapeBase != null || undoBoards.isNotEmpty()),
                 ) { Icon(Icons.AutoMirrored.Outlined.Undo, "撤销白板操作") }
                 IconButton(
                     onClick = {
@@ -338,14 +354,27 @@ internal fun WhiteboardEditor(
                         undoBoards = (undoBoards + currentBoard).takeLast(HISTORY_LIMIT)
                         publish(next)
                     },
-                    enabled = controlsEnabled && redoBoards.isNotEmpty(),
+                    enabled = controlsEnabled && shapeBase == null && redoBoards.isNotEmpty(),
                 ) { Icon(Icons.AutoMirrored.Outlined.Redo, "重做白板操作") }
                 IconButton(
                     onClick = { showClearDialog = true },
                     enabled = controlsEnabled && whiteboard.hasContent,
                 ) { Icon(Icons.Outlined.DeleteOutline, "清空白板") }
             }
-            if (tool == WhiteboardTool.SHAPE) {
+            if (tool == WhiteboardTool.SHAPE && shape.requiresSecondEdge) {
+                Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(when {
+                        shape == WhiteboardShape.TRIANGLE && shapeBase == null -> "三角形：先拖出第一条边，再从任一端点拖出第二条边，松手自动闭合。"
+                        shape == WhiteboardShape.TRIANGLE -> "三角形：从任一端点拖出第二条边，松手连接第三条边。"
+                        shapeBase == null -> "角：先拖出第一条线段，再从任一端点拖出第二条线段，松手形成角。"
+                        else -> "角：从任一端点拖出第二条线段，松手形成角。"
+                    },
+                        Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { shapeBase = null; shapePreview = emptyList(); limitReached = false },
+                        enabled = controlsEnabled && shapeBase != null) { Text("重新开始") }
+                }
+            } else if (tool == WhiteboardTool.SHAPE) {
                 Text("${shape.displayName}：在画布上拖动绘制，松手完成，颜色跟随画笔", Modifier.padding(horizontal = 12.dp),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else if (tool == WhiteboardTool.INSTRUMENT) {
@@ -382,8 +411,14 @@ internal fun WhiteboardEditor(
                     .semantics {
                         contentDescription = when {
                             readOnly -> "白板预览，可拖动和双指缩放"
-                            tool == WhiteboardTool.SHAPE -> "白板画布，单指拖动绘制${shape.displayName}，双指拖动和缩放"
-                            tool == WhiteboardTool.INSTRUMENT -> "白板画布，调节${instrument.displayName}，双指拖动和缩放"
+                            tool == WhiteboardTool.SHAPE -> when (shape) {
+                                WhiteboardShape.TRIANGLE -> "白板画布，先拖出第一条边，再从端点拖出第二条边，松手闭合三角形，双指拖动和缩放"
+                                WhiteboardShape.ANGLE -> "白板画布，先拖出第一条线段，再从端点拖出第二条线段成角，双指拖动和缩放"
+                                else -> "白板画布，单指拖动绘制${shape.displayName}，双指拖动和缩放"
+                            }
+                            tool == WhiteboardTool.INSTRUMENT -> if (instrument == WhiteboardInstrument.COMPASS)
+                                "白板画布，拖动圆规笔尖画弧，拖动圆心移动，双指拖动和缩放"
+                                else "白板画布，调节${instrument.displayName}，双指拖动和缩放"
                             tool == WhiteboardTool.TEXT -> "白板画布，轻点插入或编辑文字，拖动文字移动，双指拖动和缩放"
                             erasing -> "白板画布，单指擦除，双指拖动和缩放"
                             else -> "白板画布，单指绘画或擦除，双指拖动和缩放"
@@ -411,6 +446,10 @@ internal fun WhiteboardEditor(
                             }
                             var strokeStopped = !transform.containsScreenPoint(down.position.x, down.position.y)
                             val downPoint = pointAt(down.position)
+                            val shapeDrag = if (!readOnly && tool == WhiteboardTool.SHAPE &&
+                                shape.requiresSecondEdge && !strokeStopped) {
+                                WhiteboardTwoEdgeDrag(shape, shapeBase, downPoint, 24.dp.toPx() / transform.scale)
+                            } else null
                             val instrumentDrag = if (!readOnly && tool == WhiteboardTool.INSTRUMENT && !strokeStopped) {
                                 WhiteboardInstrumentDrag(instrumentState, instrument, downPoint, 24.dp.toPx() / transform.scale)
                             } else null
@@ -425,6 +464,13 @@ internal fun WhiteboardEditor(
                                 if (gesture.working != lastPublished) publish(gesture.working)
                                 limitReached = gesture.limitReached
                             }
+                            fun updateInstrument(point: WhiteboardPoint) {
+                                instrumentDrag?.let {
+                                    instrumentState = it.update(point)
+                                    gesture.previewStroke(it.drawingPoints)
+                                    showWorkingBoard()
+                                }
+                            }
 
                             drawing = true
                             try {
@@ -432,12 +478,13 @@ internal fun WhiteboardEditor(
                                     gesture.startNavigation()
                                 } else if (!strokeStopped) {
                                     when (tool) {
-                                        WhiteboardTool.INSTRUMENT -> instrumentDrag?.let { instrumentState = it.update(downPoint) }
+                                        WhiteboardTool.INSTRUMENT -> updateInstrument(downPoint)
                                         WhiteboardTool.TEXT -> Unit
                                         else -> {
-                                            gesture.begin(downPoint)
+                                            if (shapeDrag != null) shapePreview = shapeDrag.update(downPoint)
+                                            else gesture.begin(downPoint)
                                             guidePoint = downPoint
-                                            guideAnchor = downPoint.takeIf { tool == WhiteboardTool.SHAPE }
+                                            guideAnchor = downPoint.takeIf { tool == WhiteboardTool.SHAPE && shapeDrag == null }
                                             if (erasing) eraserPosition = downPoint
                                             showWorkingBoard()
                                         }
@@ -451,6 +498,7 @@ internal fun WhiteboardEditor(
                                         // Remove the first finger's tentative dot/stroke/erasure.
                                         // Navigation never creates undo entries or clears redo.
                                         gesture.startNavigation()
+                                        shapeDrag?.let { shapePreview = it.startNavigation() }
                                         instrumentDrag?.let { instrumentState = it.startNavigation() }
                                         textDrag?.startNavigation()
                                         eraserPosition = null
@@ -478,7 +526,7 @@ internal fun WhiteboardEditor(
                                         } else {
                                             val point = pointAt(change.position)
                                             when (tool) {
-                                                WhiteboardTool.INSTRUMENT -> instrumentDrag?.let { instrumentState = it.update(point) }
+                                                WhiteboardTool.INSTRUMENT -> updateInstrument(point)
                                                 WhiteboardTool.TEXT -> {
                                                     if (point.isFarEnoughFrom(downPoint, touchSlop)) pointerTravelled = true
                                                     textDrag?.let {
@@ -488,7 +536,14 @@ internal fun WhiteboardEditor(
                                                     if (!change.pressed) completedTextTap = !pointerTravelled && textDrag?.hasMoved != true
                                                 }
                                                 else -> {
-                                                    gesture.update(point, finalPoint = !change.pressed)
+                                                    if (shapeDrag != null) {
+                                                        shapePreview = shapeDrag.update(point)
+                                                        if (!change.pressed) {
+                                                            val result = shapeDrag.finish()
+                                                            gesture.previewStroke(result.drawingPoints)
+                                                            if (!gesture.limitReached) shapeBase = result.base
+                                                        }
+                                                    } else gesture.update(point, finalPoint = !change.pressed)
                                                     guidePoint = point
                                                     if (erasing) eraserPosition = point
                                                     showWorkingBoard()
@@ -505,6 +560,7 @@ internal fun WhiteboardEditor(
                                 if (gesture.hasChanges) rememberUndo(gesture.before)
                                 if (textDrag?.hasChanges == true) rememberUndo(textDrag.before)
                                 drawing = false
+                                shapePreview = shapeBase?.points.orEmpty()
                                 eraserPosition = null
                                 guidePoint = null
                                 guideAnchor = null
@@ -538,6 +594,17 @@ internal fun WhiteboardEditor(
                             }
                         }
                         drawWhiteboard(whiteboard, transform.scale, origin, imageBitmaps)
+                        if (!readOnly && tool == WhiteboardTool.SHAPE && shape.requiresSecondEdge) {
+                            val points = shapePreview.ifEmpty { shapeBase?.points.orEmpty() }
+                            if (points.size >= 2) drawWhiteboard(
+                                Whiteboard(strokes = listOf(WhiteboardStroke(ink, lineWidth, points, brush))), transform.scale, origin,
+                            )
+                            shapeBase?.points?.forEach { point ->
+                                val position = origin + Offset(point.x * transform.scale, point.y * transform.scale)
+                                drawCircle(Color.White, 6.dp.toPx(), position)
+                                drawCircle(Color(0xFF1967D2), 6.dp.toPx(), position, style = Stroke(1.5.dp.toPx()))
+                            }
+                        }
                         if (showGuides && !readOnly) guidePoint?.let { point ->
                             val dashed = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx()))
                             val color = Color(0xFF1967D2).copy(alpha = 0.55f)
@@ -717,6 +784,8 @@ internal fun WhiteboardEditor(
                     showClearDialog = false
                     rememberUndo(currentBoard)
                     limitReached = false
+                    shapeBase = null
+                    shapePreview = emptyList()
                     publish(Whiteboard())
                 }) { Text("清空", color = MaterialTheme.colorScheme.error) }
             },
@@ -780,7 +849,11 @@ private fun WhiteboardShapeIcon(shape: WhiteboardShape) {
         }
         val end = if (open) WhiteboardPoint(860f, 220f) else WhiteboardPoint(860f, 780f)
         // Enlarge arrowheads so the template remains recognisable at icon size.
-        val points = shape.points(start, end, 80f)
+        val points = when (shape) {
+            WhiteboardShape.TRIANGLE -> shape.points(WhiteboardPoint(500f, 220f), WhiteboardPoint(860f, 780f), 80f, WhiteboardPoint(140f, 780f))
+            WhiteboardShape.ANGLE -> shape.points(WhiteboardPoint(860f, 220f), WhiteboardPoint(140f, 780f), 80f, WhiteboardPoint(860f, 780f))
+            else -> shape.points(start, end, 80f)
+        }
         val path = Path().apply {
             points.forEachIndexed { index, point ->
                 val x = point.x / 1000f * size.width

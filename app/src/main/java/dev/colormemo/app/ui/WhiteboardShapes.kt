@@ -1,9 +1,11 @@
 package dev.colormemo.app.ui
 
+import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardPoint
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -19,14 +21,17 @@ internal enum class WhiteboardShape(val displayName: String, val isArrow: Boolea
     ELLIPSE("椭圆"),
     TRIANGLE("三角形"),
     TRAPEZOID("梯形"),
-    DIAMOND("菱形"),
+    PARALLELOGRAM("平行四边形"),
     HEXAGON("六边形"),
     CYLINDER("圆柱"),
     CONE("圆锥"),
+    PYRAMID("棱锥"),
     CUBE("立方体"),
     SPHERE("球体"),
     ANGLE("角"),
-    COORDINATE_AXES("坐标系"),
+    COORDINATE_AXES("坐标系");
+
+    val requiresSecondEdge: Boolean get() = this == TRIANGLE || this == ANGLE
 }
 
 /** Templates become one ordinary stroke, shared by editing, persistence and SVG export. */
@@ -34,9 +39,12 @@ internal fun WhiteboardShape.points(
     start: WhiteboardPoint,
     end: WhiteboardPoint,
     strokeWidth: Float,
+    third: WhiteboardPoint? = null,
 ): List<WhiteboardPoint> {
     val from = whiteboardPoint(start.x, start.y)
     val to = whiteboardPoint(end.x, end.y)
+    if (this == WhiteboardShape.TRIANGLE) return third?.let { whiteboardTrianglePoints(from, to, it) }.orEmpty()
+    if (this == WhiteboardShape.ANGLE) return third?.let { whiteboardAnglePoints(from, to, it) }.orEmpty()
     if (from == to) return emptyList()
     val dx = to.x - from.x
     val dy = to.y - from.y
@@ -102,10 +110,14 @@ internal fun WhiteboardShape.points(
         return listOf(whiteboardPoint(left, baseY), whiteboardPoint(centerX, top)) +
             ellipsePoints(centerX, baseY, width / 2f, rimRadius, 0.0, 2 * PI, 48)
     }
-    if (this == WhiteboardShape.ANGLE) {
-        val radius = minOf(width, height) * 0.22f
-        return listOf(whiteboardPoint(right, top), whiteboardPoint(left, bottom), whiteboardPoint(right, bottom)) +
-            ellipsePoints(left, bottom, radius, radius, 0.0, atan2(-height.toDouble(), width.toDouble()), 24)
+    if (this == WhiteboardShape.PYRAMID) {
+        val apex = whiteboardPoint(centerX, top)
+        val baseLeft = whiteboardPoint(left, top + height * 0.75f)
+        val baseFront = whiteboardPoint(left + width * 0.4f, bottom)
+        val baseRight = whiteboardPoint(right, top + height * 0.8f)
+        val baseBack = whiteboardPoint(left + width * 0.6f, top + height * 0.55f)
+        return listOf(baseLeft, baseBack, baseRight, baseFront, baseLeft,
+            apex, baseBack, baseRight, apex, baseFront)
     }
     if (this == WhiteboardShape.COORDINATE_AXES) {
         val origin = whiteboardPoint(centerX, centerY)
@@ -123,12 +135,9 @@ internal fun WhiteboardShape.points(
         )
         WhiteboardShape.CIRCLE, WhiteboardShape.ELLIPSE ->
             ellipsePoints(centerX, centerY, width / 2f, height / 2f, 0.0, 2 * PI, 96).dropLast(1)
-        WhiteboardShape.TRIANGLE -> listOf(
-            whiteboardPoint(centerX, top), WhiteboardPoint(right, bottom), WhiteboardPoint(left, bottom),
-        )
-        WhiteboardShape.DIAMOND -> listOf(
-            whiteboardPoint(centerX, top), whiteboardPoint(right, centerY),
-            whiteboardPoint(centerX, bottom), whiteboardPoint(left, centerY),
+        WhiteboardShape.PARALLELOGRAM -> listOf(
+            whiteboardPoint(left + width * 0.25f, top), whiteboardPoint(right, top),
+            whiteboardPoint(right - width * 0.25f, bottom), whiteboardPoint(left, bottom),
         )
         WhiteboardShape.TRAPEZOID -> listOf(
             whiteboardPoint(left + width * 0.25f, top), whiteboardPoint(right - width * 0.25f, top),
@@ -142,6 +151,44 @@ internal fun WhiteboardShape.points(
         else -> error("Open and composite shapes handled above")
     }
     return outline + outline.first()
+}
+
+/** Two chosen segments meet at the vertex; the marker follows their smaller angle. */
+internal fun whiteboardAnglePoints(
+    first: WhiteboardPoint,
+    vertex: WhiteboardPoint,
+    second: WhiteboardPoint,
+): List<WhiteboardPoint> {
+    val a = whiteboardPoint(first.x, first.y)
+    val v = whiteboardPoint(vertex.x, vertex.y)
+    val b = whiteboardPoint(second.x, second.y)
+    if (!a.isFarEnoughFrom(v, MIN_SHAPE_EDGE) || !b.isFarEnoughFrom(v, MIN_SHAPE_EDGE)) return emptyList()
+    val firstDx = (a.x - v.x).toDouble()
+    val firstDy = (a.y - v.y).toDouble()
+    val secondDx = (b.x - v.x).toDouble()
+    val secondDy = (b.y - v.y).toDouble()
+    val firstAngle = atan2(firstDy, firstDx)
+    val secondAngle = atan2(secondDy, secondDx)
+    val sweep = atan2(sin(firstAngle - secondAngle), cos(firstAngle - secondAngle))
+    val edges = listOf(a, v, b)
+    if (abs(sweep) < 0.00001) return edges
+    var radius = (minOf(sqrt(firstDx * firstDx + firstDy * firstDy),
+        sqrt(secondDx * secondDx + secondDy * secondDy)) * 0.22).toFloat()
+    val segments = ceil(abs(sweep) / PI * 32).toInt().coerceAtLeast(1)
+    val directions = List(segments + 1) { index ->
+        val angle = secondAngle + sweep * index / segments
+        WhiteboardPoint(cos(angle).toFloat(), sin(angle).toFloat())
+    }
+    // Shrink the marker near an edge instead of flattening it against the board.
+    directions.forEach { direction ->
+        if (direction.x > 0.00001f) radius = minOf(radius, (Whiteboard.CANVAS_WIDTH - v.x) / direction.x)
+        if (direction.x < -0.00001f) radius = minOf(radius, -v.x / direction.x)
+        if (direction.y > 0.00001f) radius = minOf(radius, (Whiteboard.CANVAS_HEIGHT - v.y) / direction.y)
+        if (direction.y < -0.00001f) radius = minOf(radius, -v.y / direction.y)
+    }
+    if (radius < 0.5f) return edges
+    // Return along the second arm to reach the marker without an interior diagonal.
+    return edges + directions.map { whiteboardPoint(v.x + it.x * radius, v.y + it.y * radius) }
 }
 
 private fun arrowHead(tip: WhiteboardPoint, dx: Float, dy: Float, size: Float): List<WhiteboardPoint> {

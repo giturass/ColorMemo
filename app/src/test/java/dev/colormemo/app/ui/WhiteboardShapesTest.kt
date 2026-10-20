@@ -28,8 +28,8 @@ class WhiteboardShapesTest {
 
     @Test
     fun closedTemplatesAreIndependentOfDragDirection() {
-        listOf(WhiteboardShape.RECTANGLE, WhiteboardShape.ELLIPSE, WhiteboardShape.TRIANGLE,
-            WhiteboardShape.DIAMOND, WhiteboardShape.TRAPEZOID, WhiteboardShape.HEXAGON).forEach { shape ->
+        listOf(WhiteboardShape.RECTANGLE, WhiteboardShape.ELLIPSE,
+            WhiteboardShape.PARALLELOGRAM, WhiteboardShape.TRAPEZOID, WhiteboardShape.HEXAGON).forEach { shape ->
             val points = shape.points(point(100f, 200f), point(700f, 900f), 3f)
             assertEquals(points, shape.points(point(700f, 900f), point(100f, 200f), 3f))
             assertEquals(points.first(), points.last())
@@ -38,6 +38,21 @@ class WhiteboardShapesTest {
             assertEquals(200f, points.minOf { it.y })
             assertEquals(900f, points.maxOf { it.y })
         }
+    }
+
+    @Test
+    fun parallelogramHasHorizontalBasesAndTwoParallelSlopingSides() {
+        val points = WhiteboardShape.PARALLELOGRAM.points(point(100f, 200f), point(900f, 600f), 3f)
+        assertEquals(5, points.size)
+        assertEquals(points.first(), points.last())
+        val (a, b, c, d) = points
+        assertEquals(a.y, b.y)
+        assertEquals(c.y, d.y)
+        assertTrue(a.x > d.x && b.x > c.x)
+        assertEquals(b.x - a.x, c.x - d.x)
+        assertEquals(b.x - c.x, a.x - d.x)
+        assertEquals(c.y - b.y, d.y - a.y)
+        assertNotEquals(b.x - a.x, sqrt((c.x - b.x) * (c.x - b.x) + (c.y - b.y) * (c.y - b.y)))
     }
 
     @Test
@@ -100,6 +115,29 @@ class WhiteboardShapesTest {
             points.zipWithNext().filter { (a, b) -> a.y > 800f && b.y > 800f }.forEach { (a, b) ->
                 assertTrue(kotlin.math.abs(a.x - b.x) < 50f)
             }
+        }
+    }
+
+    @Test
+    fun pyramidHasAQuadrilateralBaseAndFourEdgesMeetingAtTheApex() {
+        val start = point(100f, 200f)
+        val end = point(700f, 1000f)
+        val points = WhiteboardShape.PYRAMID.points(start, end, 3f)
+        assertEquals(points, WhiteboardShape.PYRAMID.points(end, start, 3f))
+        val vertices = points.distinct()
+        assertEquals(5, vertices.size)
+        val apex = vertices.minBy { it.y }
+        assertEquals(200f, apex.y)
+        assertEquals(100f, vertices.minOf { it.x })
+        assertEquals(700f, vertices.maxOf { it.x })
+        assertEquals(1000f, vertices.maxOf { it.y })
+        val edges = points.zipWithNext().map { (a, b) -> setOf(a, b) }.toSet()
+        assertEquals(8, edges.size)
+        val base = vertices - apex
+        base.forEach { vertex ->
+            assertTrue(edges.contains(setOf(apex, vertex)))
+            assertEquals(2, edges.count { apex !in it && vertex in it })
+            assertTrue(vertex.y > apex.y)
         }
     }
 
@@ -201,7 +239,7 @@ class WhiteboardShapesTest {
     fun dragReplacesOnePreviewStrokeAndPreservesInkAndImages() {
         val image = WhiteboardImage("image", "attachment", 0f, 0f, 100f, 100f)
         val before = Whiteboard(images = listOf(image))
-        WhiteboardShape.entries.forEach { shape ->
+        WhiteboardShape.entries.filterNot { it.requiresSecondEdge }.forEach { shape ->
             WhiteboardBrush.entries.forEach { brush ->
                 val session = WhiteboardGestureSession(before, false, 0xFF1967D2L, 16f, brush, shape)
                 assertSame(before, session.begin(point(100f, 100f)))
@@ -277,7 +315,8 @@ class WhiteboardShapesTest {
 
     @Test
     fun shapesUseExistingJsonAndSvgFormatsAndKeepTheirOutsidePartsAfterErasing() {
-        val sessions = WhiteboardShape.entries.map { shape ->
+        val shapes = WhiteboardShape.entries.filterNot { it.requiresSecondEdge }
+        val sessions = shapes.map { shape ->
             WhiteboardGestureSession(Whiteboard(), false, 0xFF1967D2L, 6f, shape = shape).apply {
                 begin(point(100f, 200f))
                 update(point(700f, 900f), finalPoint = true)
@@ -288,7 +327,7 @@ class WhiteboardShapesTest {
         assertEquals(board, SyncJson.json.decodeFromString<Whiteboard>(json))
         assertFalse(json.contains("shape"))
         val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(whiteboardSvg(board).byteInputStream())
-        assertEquals(WhiteboardShape.entries.size, document.getElementsByTagName("path").length)
+        assertEquals(shapes.size, document.getElementsByTagName("path").length)
         sessions.forEach { session ->
             val stroke = session.working.strokes.single()
             val hit = stroke.points.first()

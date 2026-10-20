@@ -58,7 +58,14 @@ internal fun WhiteboardInstrumentControls(
                 enabled = enabled && state.maximumRadius > MIN_INSTRUMENT_RADIUS,
                 modifier = Modifier.weight(1f).semantics { contentDescription = "${instrument.displayName}半径" })
         }
-        if (instrument == WhiteboardInstrument.PROTRACTOR) {
+        if (instrument == WhiteboardInstrument.COMPASS) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("起笔方向", style = MaterialTheme.typography.bodySmall)
+                Slider(value = state.baselineDegrees, onValueChange = { onChange(state.copy(baselineDegrees = it)) },
+                    valueRange = 0f..360f, enabled = enabled,
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "圆规起笔方向" })
+            }
+        } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("角度", style = MaterialTheme.typography.bodySmall)
                 Slider(value = state.angleDegrees, onValueChange = { onChange(state.copy(angleDegrees = it)) },
@@ -66,7 +73,7 @@ internal fun WhiteboardInstrumentControls(
                     modifier = Modifier.weight(1f).semantics { contentDescription = "量角器测量角度" })
             }
         }
-        Text(if (instrument == WhiteboardInstrument.COMPASS) "拖动圆心移动，拖动笔尖调节半径，点击「画圆」完成。"
+        Text(if (instrument == WhiteboardInstrument.COMPASS) "拖动圆心移动，滑块调半径和起笔方向；拖动笔尖旋转画弧，松手结束，也可点击「画圆」。"
             else "拖动中心移动，下方圆点旋转基线，圆弧上的圆点调整测量边。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -120,9 +127,9 @@ internal fun DrawScope.drawWhiteboardInstrument(
     }
     if (instrument == WhiteboardInstrument.COMPASS) {
         drawCircle(blue.copy(alpha = 0.7f), radius, center, style = Stroke(width, pathEffect = dashed))
-        drawLine(grey, center, screen(state.handlePoint(InstrumentHandle.RADIUS)), width)
+        drawLine(grey, center, screen(state.handlePoint(InstrumentHandle.PEN)), width)
         handle(InstrumentHandle.CENTER)
-        handle(InstrumentHandle.RADIUS)
+        handle(InstrumentHandle.PEN)
         return
     }
     val arc = Path().apply {
