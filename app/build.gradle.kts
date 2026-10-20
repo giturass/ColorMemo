@@ -31,8 +31,8 @@ android {
         applicationId = "dev.colormemo.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.2.10"
+        versionCode = 22
+        versionName = "0.2.11"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

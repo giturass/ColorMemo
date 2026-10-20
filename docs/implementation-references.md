@@ -47,3 +47,9 @@ WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹
 - [SVG 2 image](https://www.w3.org/TR/SVG2/embedded.html#ImageElement)：`image` 元素的 `x/y/width/height` 确定图像所在矩形，使用 `href` 内嵌 PNG，放在笔画之前保持涂鸦层次；导出先校正 EXIF 方向以匹配画布。
 - [kotlinx.serialization 严格字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html)：新增 `whiteboard.images` 由同步验证器检查附件引用与有限坐标，旧客户端遇到未知字段拒绝解码，避免误删图片；空列表不写出。
 - [OkHttp 4.12 Call](https://github.com/square/okhttp/blob/parent-4.12.0/okhttp/src/main/kotlin/okhttp3/Call.kt)：远程图片使用异步请求、关闭响应体，协程取消时取消 Call。便签 Markdown 预览及白板远程导入共用有大小限制的 HTTPS 下载器，禁止向 HTTP 降级；不使用同步客户端的认证信息。
+
+2026-10-21 白板文字与绘图工具复核：
+
+- [Android Canvas.drawText](https://developer.android.com/reference/android/graphics/Canvas#drawText(java.lang.String,float,float,android.graphics.Paint))：按固定白板坐标设置文字大小和各行基线，编辑画布与卡片预览共用绘制方法。
+- [SVG 2 text/tspan](https://www.w3.org/TR/SVG2/text.html#TextElement)：使用 `text` 字体、颜色与 `tspan` 的显式 `x/y` 保留换行，XML 转义避免把文字解释为元素。
+- [kotlinx.serialization 未知字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html)：可选 `texts` 空列表不写出；沿用严格未知字段校验，旧版本拒绝包含新图层的快照，避免重写时丢失文字。收发均验证数量、内容、有限坐标、字号和边界。

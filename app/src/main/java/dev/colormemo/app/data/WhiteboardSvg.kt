@@ -2,6 +2,7 @@ package dev.colormemo.app.data
 
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardBrush
+import dev.colormemo.core.model.WhiteboardText
 
 /** Matches the canvas geometry, layered translucent ink and marker caps. */
 internal fun whiteboardSvg(whiteboard: Whiteboard, imageDataUrls: Map<String, String> = emptyMap()): String = buildString {
@@ -39,6 +40,18 @@ internal fun whiteboardSvg(whiteboard: Whiteboard, imageDataUrls: Map<String, St
                     .append("\" stroke-linejoin=\"").append(if (marker) "bevel" else "round").append("\"/>\n")
             }
         }
+    }
+    whiteboard.texts.forEach { text ->
+        val color = "#" + (text.color and 0xffffffL).toString(16).padStart(6, '0')
+        append("<text font-family=\"sans-serif\" font-size=\"").append(text.fontSize)
+            .append("\" fill=\"").append(color).append("\" xml:space=\"preserve\">")
+        text.text.split('\n').forEachIndexed { index, line ->
+            append("<tspan x=\"").append(text.x).append("\" y=\"")
+                .append(text.y + text.fontSize + index * text.fontSize * WhiteboardText.LINE_HEIGHT).append("\">")
+                .append(line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+                .append("</tspan>")
+        }
+        append("</text>\n")
     }
     append("</svg>\n")
 }

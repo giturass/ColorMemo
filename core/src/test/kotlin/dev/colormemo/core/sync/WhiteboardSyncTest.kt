@@ -7,6 +7,7 @@ import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
+import dev.colormemo.core.model.WhiteboardText
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -18,6 +19,52 @@ class WhiteboardSyncTest {
     private val note = Note(id = "note", revision = "revision", deviceId = "device", createdAt = 1, updatedAt = 1)
     private val stroke = WhiteboardStroke(points = listOf(WhiteboardPoint(0f, 0f), WhiteboardPoint(1000f, 1000f)))
     private val board = Whiteboard(strokes = listOf(stroke))
+
+    @Test
+    fun editableUnicodeTextRoundTripsThroughBackupAndEncryptedSync() {
+        val text = WhiteboardText("text", "角度 60°\n<标注> & 😀", 100f, 1200f, 400f, 40f, 0xFF1967D2L)
+        val source = SyncDocument(notes = listOf(note.copy(whiteboard = board.copy(texts = listOf(text)))))
+        assertEquals(source, SyncJson.decodeDocument(SyncJson.encodeDocument(source)))
+        val key = SyncEncryptionKey.parse(SyncEncryptionKey.generate())
+        assertEquals(source, EncryptedSyncJson.decode(EncryptedSyncJson.encode(source, key), key))
+        val oldBoard = SyncJson.encode(SyncDocument(notes = listOf(note.copy(whiteboard = board))))
+        org.junit.Assert.assertFalse(oldBoard.contains("\"texts\""))
+        assertEquals(board, SyncJson.decode(oldBoard).notes.single().whiteboard)
+    }
+
+    @Test
+    fun textLimitsBoundsColorAndXmlCharactersAreValidatedOnImportAndExport() {
+        val text = WhiteboardText("text", "标注", 100f, 200f, 300f, 32f)
+        val invalid = listOf(text.copy(id = ""), text.copy(text = " "), text.copy(text = "x".repeat(Whiteboard.MAX_TEXT_LENGTH + 1)),
+            text.copy(text = "x\u0000"), text.copy(text = "x\uFFFF"),
+            text.copy(x = -1f), text.copy(y = -1f), text.copy(x = 701f), text.copy(y = 1990f),
+            text.copy(width = 0f), text.copy(width = 1001f), text.copy(fontSize = 11.9f), text.copy(fontSize = 96.1f),
+            text.copy(color = 0xFEFFFFFFL), text.copy(color = 0x100000000L))
+        invalid.forEach { assertRejected(board.copy(texts = listOf(it))) }
+        val validDocument = SyncDocument(notes = listOf(note.copy(whiteboard = board.copy(texts = listOf(text)))))
+        listOf("\\ud800", "\\udfff").forEach { invalidSurrogate ->
+            assertThrows(SyncProtocolException::class.java) {
+                SyncJson.decode(SyncJson.encode(validDocument).replace("标注", invalidSurrogate))
+            }
+        }
+        assertThrows(SyncProtocolException::class.java) {
+            val invalidBoard = board.copy(texts = listOf(text.copy(text = "x\uD800")))
+            SyncJson.encode(SyncDocument(notes = listOf(note.copy(whiteboard = invalidBoard))))
+        }
+        assertRejected(board.copy(texts = listOf(text, text)))
+        assertRejected(board.copy(texts = List(Whiteboard.MAX_TEXTS + 1) { text.copy(id = "text-$it") }))
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).forEach { value ->
+            listOf(text.copy(x = value), text.copy(y = value), text.copy(width = value), text.copy(fontSize = value)).forEach {
+                assertThrows(SyncProtocolException::class.java) {
+                    val invalidBoard = board.copy(texts = listOf(it))
+                    SyncJson.validate(SyncDocument(notes = listOf(note.copy(whiteboard = invalidBoard))))
+                }
+            }
+        }
+        val maximum = board.copy(texts = List(Whiteboard.MAX_TEXTS) { text.copy(id = "text-$it") })
+        val source = SyncDocument(notes = listOf(note.copy(whiteboard = maximum)))
+        assertEquals(source, SyncJson.decode(SyncJson.encode(source)))
+    }
 
     @Test
     fun imageLayersAndInkRoundTripTogetherWhileOldBoardsOmitImageField() {
@@ -197,7 +244,7 @@ class WhiteboardSyncTest {
 
     private fun assertRejected(drawing: Whiteboard) {
         val document = SyncDocument(notes = listOf(note.copy(whiteboard = drawing)))
-        assertThrows(SyncProtocolException::class.java) { SyncJson.encode(document) }
-        assertThrows(SyncProtocolException::class.java) { SyncJson.decode(SyncJson.json.encodeToString(document)) }
+        assertThrows("Export $drawing", SyncProtocolException::class.java) { SyncJson.encode(document) }
+        assertThrows("Import $drawing", SyncProtocolException::class.java) { SyncJson.decode(SyncJson.json.encodeToString(document)) }
     }
 }

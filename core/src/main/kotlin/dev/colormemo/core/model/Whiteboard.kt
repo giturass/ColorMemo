@@ -11,17 +11,50 @@ data class Whiteboard(
     val strokes: List<WhiteboardStroke> = emptyList(),
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val images: List<WhiteboardImage> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val texts: List<WhiteboardText> = emptyList(),
 ) {
+    val hasContent: Boolean get() = strokes.isNotEmpty() || images.isNotEmpty() || texts.isNotEmpty()
+
     companion object {
         const val CANVAS_WIDTH: Float = 1000f
         const val CANVAS_HEIGHT: Float = 2000f
         const val MAX_STROKES: Int = 500
         const val MAX_POINTS: Int = 6000
         const val MAX_IMAGES: Int = 20
+        const val MAX_TEXTS: Int = 100
+        const val MAX_TEXT_LENGTH: Int = 2000
+        const val MIN_TEXT_SIZE: Float = 12f
+        const val MAX_TEXT_SIZE: Float = 96f
         const val MIN_STROKE_WIDTH: Float = 1f
         const val MAX_STROKE_WIDTH: Float = 40f
     }
 }
+
+/** Text stays editable; x/y mark its top left and explicit newlines preserve its layout. */
+@Serializable
+data class WhiteboardText(
+    val id: String,
+    val text: String,
+    val x: Float,
+    val y: Float,
+    val width: Float,
+    val fontSize: Float = 32f,
+    val color: Long = 0xFF202124L,
+) {
+    val height: Float get() = (text.count { it == '\n' } + 1) * fontSize * LINE_HEIGHT
+
+    companion object {
+        const val LINE_HEIGHT = 1.25f
+    }
+}
+
+/** The same content is displayed on Android and exported into XML text nodes. */
+fun validWhiteboardTextContent(value: String): Boolean = value.isNotBlank() &&
+    value.length <= Whiteboard.MAX_TEXT_LENGTH && value.codePoints().allMatch { code ->
+        code == 0x0A || (!Character.isISOControl(code) &&
+            (code in 0x20..0xD7FF || code in 0xE000..0xFFFD || code in 0x10000..0x10FFFF))
+    }
 
 /** Images share the stroke coordinate system and are painted below all ink. */
 @Serializable

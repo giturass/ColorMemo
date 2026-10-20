@@ -104,7 +104,7 @@ AES-256-GCM
 }
 ```
 
-笔画按绘制顺序排列，坐标固定为横向 `0..1000`、纵向 `0..2000` 的长方形空间，与显示尺寸无关；宽度为同一空间内的 `1..40`，颜色为不透明 ARGB 无符号值（JSON 以正整数表示）。点坐标与宽度必须为有限数值，每笔至少一个点，每块白板最多 500 笔、合计 6,000 点；默认细签字笔的单点显示为圆点，多点显示为圆帽、圆角折线。`{"strokes":[]}` 表示空白板，`whiteboard` 缺失或为 `null` 表示普通文字笔记。
+笔画按绘制顺序排列，坐标固定为横向 `0..1000`、纵向 `0..2000` 的长方形空间，与显示尺寸无关；宽度为同一空间内的 `1..40`，颜色为不透明 ARGB 无符号值（JSON 以正整数表示）。点坐标与宽度必须为有限数值，每笔至少一个点，每块白板最多 500 笔、合计 6,000 点；默认签字笔的单点显示为圆点，多点显示为圆帽、圆角折线。`{"strokes":[]}` 表示空白板，`whiteboard` 缺失或为 `null` 表示普通文字笔记。
 
 2026-10-19 纵向扩展：旧的 `1000×1000` 笔迹保留原始坐标，在其下方增加空白区域，不拉伸、重写或迁移旧笔迹。JSON 字段、内部文档版本和加密信封保持不变，仅扩展纵坐标合法范围；旧客户端的坐标校验会拒绝包含 `y > 1000` 的同步快照或备份，因此使用下方新区域后，所有同步设备须更新到支持此范围的版本。卡片预览和 SVG 导出均采用 `1000×2000` 比例。此次复核了 [kotlinx.serialization 严格字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html) 与 [SVG 2 viewBox](https://www.w3.org/TR/SVG2/coords.html#ViewBoxAttribute)；数值范围仍由 `SyncJson.validateWhiteboard()` 在收发两端校验。
 
@@ -115,6 +115,10 @@ AES-256-GCM
 本地与远程白板图片使用同一图层格式；远程图片插入时通过 HTTPS 下载为附件，之后不依赖原 URL。便签远程图片仍是正文里的 Markdown URL，不新增附件或协议字段。Markdown ZIP 中白板 SVG 以 data URL 内嵌经过 EXIF 方向校正、最长边不超过 2048 像素的 PNG，以便独立打开并保留图片与笔迹的位置；原始附件同时保留在 ZIP 中。撤销／清空移除的图片仅在当前草稿保留用于重做，保存时只保留仍被白板或 Markdown 引用的托管附件。
 
 每笔还可包含 `brush`：`FINELINER`（默认，写出时省略）、`WATERCOLOR` 或 `MARKER`。水彩用宽度系数 1、0.8、0.55 和透明度 0.12、0.14、0.18 的三层圆帽笔迹呈现柔边叠色；马克笔使用 0.7 透明度、方形笔帽和斜角连接，单点为正方形。屏幕、卡片预览和 SVG 采用同一组参数，原始颜色字段仍是上述不透明 ARGB。界面提供 1、3、6、10、16、24、32、40 八档，不改变原有宽度范围。
+
+2026-10-21 白板文字扩展：可选 `whiteboard.texts` 为有序列表，绘制在图片和笔画上方。每段文字包含 `id`、`text`、左上角 `x/y`、文本框 `width`、`fontSize` 和不透明 ARGB `color`，全部使用白板世界坐标。每张白板最多 100 段，每段最多 2,000 个 UTF-16 字符；内容不能全为空白，显式换行使用 `\n`，不允许其他控制字符、无效代理项或 XML 禁用字符。字号为 `12..96`，位置、宽度、字号必须有限，文本框宽度为正，高度按行数乘以字号乘以 `1.25` 计算，整个框须位于画布内。编号在同一白板内唯一，颜色在创建或编辑文字时取当前画笔颜色。文字可移动、编辑、删除和撤销，橡皮只处理笔迹。
+
+文字空列表使用 `@EncodeDefault(NEVER)` 省略，既有白板和普通文字笔记格式不变；内部文档仍为版本 1，加密信封仍为版本 2。旧客户端会严格拒绝带 `texts` 的同步快照或备份，使用此功能前所有同步设备须升级到支持文字图层的版本。JSON 备份保留可编辑文字；SVG 用 `text/tspan`、显式行位置及 XML 转义保留多行文本。复核依据：[kotlinx.serialization 未知字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html)、[SVG 2 text/tspan](https://www.w3.org/TR/SVG2/text.html#TextElement)。图形、圆规画圆和量角器绘制的角仍保存为普通笔画；辅助线、圆规与量角器的可调节覆盖层不保存、不参与同步或 SVG 导出。
 
 附件放在笔记的可选 `attachments` 数组中，默认空数组写出时省略。每项包含：
 

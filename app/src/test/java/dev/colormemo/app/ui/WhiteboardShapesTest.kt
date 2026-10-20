@@ -28,7 +28,8 @@ class WhiteboardShapesTest {
 
     @Test
     fun closedTemplatesAreIndependentOfDragDirection() {
-        listOf(WhiteboardShape.RECTANGLE, WhiteboardShape.ELLIPSE, WhiteboardShape.TRIANGLE, WhiteboardShape.DIAMOND).forEach { shape ->
+        listOf(WhiteboardShape.RECTANGLE, WhiteboardShape.ELLIPSE, WhiteboardShape.TRIANGLE,
+            WhiteboardShape.DIAMOND, WhiteboardShape.TRAPEZOID, WhiteboardShape.HEXAGON).forEach { shape ->
             val points = shape.points(point(100f, 200f), point(700f, 900f), 3f)
             assertEquals(points, shape.points(point(700f, 900f), point(100f, 200f), 3f))
             assertEquals(points.first(), points.last())
@@ -37,6 +38,99 @@ class WhiteboardShapesTest {
             assertEquals(200f, points.minOf { it.y })
             assertEquals(900f, points.maxOf { it.y })
         }
+    }
+
+    @Test
+    fun squareKeepsEqualSidesInAllDragDirections() {
+        val start = point(500f, 500f)
+        listOf(point(800f, 900f), point(200f, 900f), point(800f, 100f), point(200f, 100f)).forEach { end ->
+            val points = WhiteboardShape.SQUARE.points(start, end, 3f)
+            assertEquals(points.first(), points.last())
+            assertEquals(4, points.distinct().size)
+            points.zipWithNext().forEach { (a, b) ->
+                assertEquals(300f, kotlin.math.abs(a.x - b.x) + kotlin.math.abs(a.y - b.y))
+                assertTrue(a.x == b.x || a.y == b.y)
+            }
+            points.forEach { p ->
+                assertTrue(p.x in minOf(start.x, end.x)..maxOf(start.x, end.x))
+                assertTrue(p.y in minOf(start.y, end.y)..maxOf(start.y, end.y))
+            }
+        }
+    }
+
+    @Test
+    fun curvedArrowBendsAndItsHeadFollowsTheFinalTangent() {
+        val start = point(200f, 700f)
+        val end = point(800f, 700f)
+        val points = WhiteboardShape.CURVED_ARROW.points(start, end, 6f)
+        val curve = points.dropLast(3)
+        assertEquals(start, curve.first())
+        assertEquals(end, curve.last())
+        assertTrue(curve.minOf { it.y } < 650f)
+        val previous = curve.dropLast(1).last()
+        val dx = end.x - previous.x
+        val dy = end.y - previous.y
+        val wings = listOf(points[points.lastIndex - 2], points.last())
+        assertWingsBehindTip(end, dx, dy, wings)
+    }
+
+    @Test
+    fun doubleArrowHasOpposingHeadsInEveryDirection() {
+        val start = point(500f, 500f)
+        listOf(point(800f, 500f), point(200f, 500f), point(500f, 800f), point(500f, 200f),
+            point(800f, 800f), point(200f, 200f)).forEach { end ->
+            val points = WhiteboardShape.DOUBLE_ARROW.points(start, end, 6f)
+            val dx = end.x - start.x
+            val dy = end.y - start.y
+            assertWingsBehindTip(start, -dx, -dy, listOf(points[0], points[2]))
+            assertWingsBehindTip(end, dx, dy, listOf(points[5], points[7]))
+            assertTrue(points.zipWithNext().any { (a, b) -> a == start && b == end })
+        }
+    }
+
+    @Test
+    fun cylinderAndConeHaveCurvedRimsWithoutLinesAcrossTheirBases() {
+        listOf(WhiteboardShape.CYLINDER, WhiteboardShape.CONE).forEach { shape ->
+            val points = shape.points(point(100f, 200f), point(700f, 1000f), 3f)
+            assertEquals(points, shape.points(point(700f, 1000f), point(100f, 200f), 3f))
+            assertEquals(100f, points.minOf { it.x })
+            assertEquals(700f, points.maxOf { it.x })
+            assertEquals(200f, points.minOf { it.y })
+            assertEquals(1000f, points.maxOf { it.y })
+            points.zipWithNext().filter { (a, b) -> a.y > 800f && b.y > 800f }.forEach { (a, b) ->
+                assertTrue(kotlin.math.abs(a.x - b.x) < 50f)
+            }
+        }
+    }
+
+    @Test
+    fun cubeHasThreeSquareFaceEdgesAndSphereKeepsRoundOutline() {
+        val cube = WhiteboardShape.CUBE.points(point(100f, 200f), point(700f, 1000f), 3f)
+        val aligned = cube.zipWithNext().filter { (a, b) -> a.x == b.x || a.y == b.y }
+        assertEquals(6, aligned.size)
+        aligned.forEach { (a, b) -> assertEquals(432f, kotlin.math.abs(a.x - b.x) + kotlin.math.abs(a.y - b.y)) }
+        val sphere = WhiteboardShape.SPHERE.points(point(100f, 200f), point(700f, 1000f), 3f)
+        assertEquals(600f, sphere.maxOf { it.x } - sphere.minOf { it.x })
+        assertEquals(600f, sphere.maxOf { it.y } - sphere.minOf { it.y })
+        sphere.forEach { p ->
+            val dx = p.x - 400f
+            val dy = p.y - 500f
+            assertTrue(dx * dx + dy * dy <= 301f * 301f)
+        }
+    }
+
+    @Test
+    fun coordinateAxesCrossAtTheCenterAndOnlyArrowheadsUseDiagonalLines() {
+        val points = WhiteboardShape.COORDINATE_AXES.points(point(100f, 200f), point(700f, 1000f), 3f)
+        val origin = point(400f, 600f)
+        val xTip = point(700f, 600f)
+        val yTip = point(400f, 200f)
+        assertTrue(points.contains(origin))
+        assertTrue(points.contains(point(100f, 600f)))
+        assertTrue(points.contains(point(400f, 1000f)))
+        val diagonals = points.zipWithNext().filter { (a, b) -> a.x != b.x && a.y != b.y }
+        assertTrue(diagonals.isNotEmpty())
+        diagonals.forEach { (a, b) -> assertTrue(a == xTip || b == xTip || a == yTip || b == yTip) }
     }
 
     @Test
@@ -91,10 +185,11 @@ class WhiteboardShapesTest {
     fun templatesStayInsideTheCanvasAndDoNotTurnTapsIntoDots() {
         WhiteboardShape.entries.forEach { shape ->
             assertTrue(shape.points(point(500f, 500f), point(500f, 500f), 40f).isEmpty())
-            listOf(point(0f, 0f) to point(1000f, 2000f), point(1f, 1f) to point(0f, 0f)).forEach { (start, end) ->
+            listOf(point(0f, 0f) to point(1000f, 2000f), point(1f, 1f) to point(0f, 0f),
+                point(0.5f, 0f) to point(0f, 0f), point(500f, 500f) to point(500.5f, 500.5f)).forEach { (start, end) ->
                 shape.points(start, end, 40f).forEach { p ->
-                    assertTrue(p.x.isFinite() && p.x in 0f..Whiteboard.CANVAS_WIDTH)
-                    assertTrue(p.y.isFinite() && p.y in 0f..Whiteboard.CANVAS_HEIGHT)
+                    assertTrue("$shape $start -> $end produced $p", p.x.isFinite() && p.x in 0f..Whiteboard.CANVAS_WIDTH)
+                    assertTrue("$shape $start -> $end produced $p", p.y.isFinite() && p.y in 0f..Whiteboard.CANVAS_HEIGHT)
                 }
             }
         }
@@ -207,4 +302,10 @@ class WhiteboardShapesTest {
     }
 
     private fun point(x: Float, y: Float) = WhiteboardPoint(x, y)
+
+    private fun assertWingsBehindTip(tip: WhiteboardPoint, dx: Float, dy: Float, wings: List<WhiteboardPoint>) {
+        wings.forEach { wing -> assertTrue((wing.x - tip.x) * dx + (wing.y - tip.y) * dy < 0f) }
+        val crosses = wings.map { (it.x - tip.x) * dy - (it.y - tip.y) * dx }
+        assertTrue(crosses[0] * crosses[1] < 0f)
+    }
 }

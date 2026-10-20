@@ -175,6 +175,18 @@ object SyncJson {
                 image.x + image.width > Whiteboard.CANVAS_WIDTH || image.y + image.height > Whiteboard.CANVAS_HEIGHT
             ) throw SyncProtocolException("白板图片引用或位置无效，未覆盖任何数据。")
         }
+        if (whiteboard.texts.size > Whiteboard.MAX_TEXTS ||
+            whiteboard.texts.map { it.id }.toSet().size != whiteboard.texts.size
+        ) throw SyncProtocolException("白板文字数量或编号无效，未覆盖任何数据。")
+        for (text in whiteboard.texts) {
+            validateIdentifier(text.id)
+            if (!dev.colormemo.core.model.validWhiteboardTextContent(text.text) ||
+                !text.x.isFinite() || !text.y.isFinite() || !text.width.isFinite() || !text.fontSize.isFinite() ||
+                text.fontSize !in Whiteboard.MIN_TEXT_SIZE..Whiteboard.MAX_TEXT_SIZE ||
+                text.color !in 0xFF000000L..0xFFFFFFFFL || text.x < 0f || text.y < 0f || text.width <= 0f ||
+                text.x + text.width > Whiteboard.CANVAS_WIDTH || text.y + text.height > Whiteboard.CANVAS_HEIGHT
+            ) throw SyncProtocolException("白板文字内容或位置无效，未覆盖任何数据。")
+        }
         if (whiteboard.strokes.size > Whiteboard.MAX_STROKES ||
             whiteboard.strokes.sumOf { it.points.size.toLong() } > Whiteboard.MAX_POINTS
         ) {

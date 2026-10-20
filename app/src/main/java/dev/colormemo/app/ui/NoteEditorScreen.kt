@@ -202,7 +202,7 @@ internal fun NoteEditorScreen(
     val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, retainedAttachments) { draft.fingerprint() }
     val dirty = fingerprint != initialFingerprint
     val canSave = !saving && !importingImage && pendingWhiteboardImage == null && (title.isNotBlank() || content.text.isNotBlank() || retainedAttachments.isNotEmpty() ||
-        whiteboard?.strokes?.isNotEmpty() == true || (whiteboard != null && note != null)) &&
+        whiteboard?.hasContent == true || (whiteboard != null && note != null)) &&
         title.length <= MAX_TITLE_LENGTH && content.text.length <= MAX_CONTENT_LENGTH
     suspend fun insertImage(imported: NoteAttachment) {
         val attachment = attachments.firstOrNull { it.markdownPath == imported.markdownPath } ?: imported
@@ -641,7 +641,7 @@ internal fun NoteEditorScreen(
             text = {
                 if (whiteboard != null) {
                     Text(
-                        "单指或触控笔写画，双指拖动画布或捏合缩放。画布向下延伸，双指向上拖动即可继续在下方创作；双指捏合缩小可查看完整画布。\n\n点击图形图标选择直线、箭头、矩形、圆形、椭圆、三角形或菱形，菜单顶部可直接选择绘图颜色。在画布上按住拖动调整大小，松手完成。圆形会保持正圆；图形沿用当前笔型和粗细，可连续绘制。再次点击图形图标即可换颜色，新绘制的图形会使用所选颜色。\n\n点击图片按钮，选择本地图片或输入远程图片地址。图片会放在当前可见画布的中央，可直接在图片上涂鸦，保存后离线也能继续编辑。\n\n点击画笔图标，切换到画笔并设置细签字笔、水彩笔、马克笔、颜色和八档粗细。先设置画笔，再选择图形即可使用对应笔触。选中橡皮后，再次点击橡皮图标可调节擦除范围，画布上的圆圈表示当前范围。橡皮仅擦除扫过的局部笔迹，保留其余笔画、图形和图片；插图、绘画、图形和清空均可撤销或重做。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。",
+                        "单指或触控笔写画，双指拖动画布或捏合缩放。画布向下延伸，双指向上拖动即可继续在下方创作；双指捏合缩小可查看完整画布。\n\n点击画笔图标，设置签字笔、水彩笔、马克笔、24 种预设颜色、自定义色值和八档粗细。图形、圆规绘制与新增文字统一使用当前画笔颜色。\n\n点击图形图标，选择直线、箭头、曲箭头、双箭头、矩形、正方形、圆形、椭圆、三角形、梯形、菱形、六边形、圆柱、圆锥、立方体、球体、角或坐标系。按住拖动调整大小，松手完成。正方形保持等边，圆形与球体保持正圆；图形沿用当前笔型和粗细。\n\n图形菜单底部可选择圆规或量角器。圆规：拖动圆心移动、拖动笔尖或滑块调整半径，点击「画圆」完成。量角器：拖动中心移动，下方圆点旋转基线，圆弧上的圆点调整测量边，顶部显示夹角；滑块可调整大小与角度，点击「绘制角」保留对应的角。测量工具本身只在编辑时显示，双指仍可移动与缩放画布。\n\n点击网格按钮显示或隐藏辅助线，绘图时显示横纵参考线及拖动范围；辅助线不写入白板。点击文字按钮插入多行文字并调整字号。在文字工具中，拖动文字移动，轻点文字编辑或删除，轻点空白处可继续插入。文字保存后仍可编辑，也会随白板同步、备份和导出。\n\n点击图片按钮，选择本地图片或输入远程图片地址。图片放在当前可见画布中央，可在图片上涂鸦，保存后可离线编辑。选中橡皮后再次点击可调节擦除范围，仅擦除扫过的局部笔迹，保留文字与图片；插图、文字、绘画、图形和清空均可撤销或重做。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。",
                         modifier = Modifier.verticalScroll(rememberScrollState()),
                     )
                 } else {
