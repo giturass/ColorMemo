@@ -28,7 +28,6 @@ import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -184,8 +183,11 @@ internal fun WhiteboardEditor(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconToggleButton(checked = tool == WhiteboardTool.PEN, onCheckedChange = { tool = WhiteboardTool.PEN }, enabled = controlsEnabled) {
-                    Icon(Icons.Outlined.Draw, "画笔")
+                IconToggleButton(checked = tool == WhiteboardTool.PEN, onCheckedChange = {
+                    tool = WhiteboardTool.PEN
+                    showBrushSettings = true
+                }, enabled = controlsEnabled) {
+                    Icon(Icons.Outlined.Draw, "画笔，设置笔型、颜色与粗细")
                 }
                 Box {
                     FilterChip(
@@ -238,11 +240,6 @@ internal fun WhiteboardEditor(
                     },
                     enabled = controlsEnabled && redoBoards.isNotEmpty(),
                 ) { Icon(Icons.AutoMirrored.Outlined.Redo, "重做白板操作") }
-                IconButton(onClick = {
-                    if (erasing) showEraserSettings = true else showBrushSettings = true
-                }, enabled = controlsEnabled) {
-                    Icon(Icons.Outlined.Tune, if (erasing) "橡皮擦除范围" else "画笔类型、颜色与粗细")
-                }
                 IconButton(
                     onClick = { showClearDialog = true },
                     enabled = controlsEnabled && (whiteboard.strokes.isNotEmpty() || whiteboard.images.isNotEmpty()),
@@ -418,7 +415,6 @@ internal fun WhiteboardEditor(
                                         WhiteboardBrush.WATERCOLOR -> 24f
                                         WhiteboardBrush.MARKER -> 16f
                                     }
-                                    if (erasing) tool = WhiteboardTool.PEN
                                 },
                                 label = { Text(type.displayName) },
                             )
@@ -430,7 +426,7 @@ internal fun WhiteboardEditor(
                             val selected = ink == color
                             Box(
                                 Modifier.size(48.dp).clip(CircleShape)
-                                    .selectable(selected = selected, role = Role.RadioButton, onClick = { ink = color; if (erasing) tool = WhiteboardTool.PEN })
+                                    .selectable(selected = selected, role = Role.RadioButton, onClick = { ink = color })
                                     .semantics { contentDescription = "${label}画笔" }
                                     .padding(5.dp)
                                     .border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape)
@@ -448,7 +444,7 @@ internal fun WhiteboardEditor(
                                 val selected = lineWidth == width
                                 Box(
                                     Modifier.size(52.dp).clip(CircleShape)
-                                        .selectable(selected, role = Role.RadioButton, onClick = { lineWidth = width; if (erasing) tool = WhiteboardTool.PEN })
+                                        .selectable(selected, role = Role.RadioButton, onClick = { lineWidth = width })
                                         .semantics { contentDescription = "粗细第${rowIndex * 4 + columnIndex + 1}档，共8档" }
                                         .padding(3.dp)
                                         .border(if (selected) 2.dp else 0.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape),
