@@ -145,4 +145,53 @@ class MarkdownArchiveTest {
         org.junit.Assert.assertArrayEquals(document.bytes(), entries.getValue("notes/0001-图片笔记-attachments/2-说明.txt"))
     }
 
+    @Test
+    fun zipKeepsInlineImagePositionsAndRepeatedReferencesWithoutAppendingDuplicates() {
+        val image = NoteAttachment.create("照片 [1].png", "image/png", byteArrayOf(1, 2, 3))
+        val content = "前文\n\n![说明](<${image.markdownPath}>)\n\n中间文字\n\n![再次引用][photo]\n\n后文\n\n[photo]: <${image.markdownPath}>\n"
+        val entries = archiveEntries(listOf(Note(title = "图文", content = content, attachments = listOf(image))))
+        assertEquals("# 图文\n\n$content", entries.getValue("notes/0001-图文.md").toString(Charsets.UTF_8))
+        assertEquals(2, entries.size)
+        org.junit.Assert.assertArrayEquals(image.bytes(), entries.getValue("notes/${image.markdownPath}"))
+    }
+
+    @Test
+    fun zipDeduplicatesSharedImagesAndKeepsSameFilenameWithDifferentBytes() {
+        val first = NoteAttachment.create("照片.png", "image/png", byteArrayOf(1))
+        val second = NoteAttachment.create("照片.png", "image/png", byteArrayOf(2))
+        val notes = listOf(first, first.copy(id = java.util.UUID.randomUUID().toString()), second).mapIndexed { index, image ->
+            Note(id = "note-$index", createdAt = index.toLong(), content = "![图片](<${image.markdownPath}>)", attachments = listOf(image))
+        }
+        val entries = archiveEntries(notes)
+        assertEquals(5, entries.size)
+        org.junit.Assert.assertArrayEquals(first.bytes(), entries.getValue("notes/${first.markdownPath}"))
+        org.junit.Assert.assertArrayEquals(second.bytes(), entries.getValue("notes/${second.markdownPath}"))
+    }
+
+    @Test
+    fun archivedInlineImagesResolveBesideTheirMarkdownAndCodeExamplesRemainUnchanged() {
+        val image = NoteAttachment.create("照片.png", "image/png", byteArrayOf(1))
+        val example = "`![示例](<${image.markdownPath}>)`"
+        val archived = Note(id = "archived", title = "归档图文", isArchived = true, createdAt = 1,
+            content = "![图片](<${image.markdownPath}>)", attachments = listOf(image))
+        val code = Note(id = "code", title = "代码", createdAt = 2, content = example, attachments = listOf(image))
+        val entries = archiveEntries(listOf(archived, code))
+        assertTrue(entries.containsKey("archive/${image.markdownPath}"))
+        val codeMarkdown = entries.getValue("notes/0002-代码.md").toString(Charsets.UTF_8)
+        assertTrue(codeMarkdown.startsWith("# 代码\n\n$example\n"))
+        assertTrue(codeMarkdown.contains("![照片.png](<0002-代码-attachments/1-照片.png>)"))
+    }
+
+    private fun archiveEntries(notes: List<Note>): Map<String, ByteArray> {
+        val output = ByteArrayOutputStream()
+        writeMarkdownArchive(notes, output)
+        val entries = linkedMapOf<String, ByteArray>()
+        ZipInputStream(output.toByteArray().inputStream()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries[entry.name] = zip.readBytes()
+            }
+        }
+        return entries
+    }
 }

@@ -35,3 +35,8 @@ WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹
 - [WorkManager 周期请求](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work) 与 [ExistingPeriodicWorkPolicy.UPDATE](https://developer.android.com/reference/androidx/work/ExistingPeriodicWorkPolicy)（2026-10-19 再次复核）：周期最短 15 分钟；保存间隔时更新唯一周期任务，正在执行的任务继续，下次周期使用新的设置。系统省电与网络条件可能延迟执行。
 
 - [Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files)、[高效加载位图](https://developer.android.com/topic/performance/graphics/load-bitmap) 与 [AndroidX ExifInterface 1.4.2](https://developer.android.com/jetpack/androidx/releases/exifinterface#1.4.2)（2026-10-19 图片插入复核）：`OpenDocument` 限定 `image/*`，再按真实文件内容检查可解码性；后台用 `inJustDecodeBounds` 和 `inSampleSize` 加载有尺寸上限的预览，并用 AndroidX 组件按 EXIF 修正方向，兼容旧 Android。原文件沿用已有附件字段保存、加密同步和备份，Markdown ZIP 使用图片引用；不新增存储权限或同步字段。
+
+2026-10-20 Markdown 图片接入复核：
+
+- [CommonMark 图片语法](https://spec.commonmark.org/0.31.2/#images) 与 [反斜杠转义](https://spec.commonmark.org/0.31.2/#backslash-escapes)：插入 `![说明](<attachments/摘要-文件名>)`，文件名中的 Markdown 标点转义为普通文字。使用当前 Markwon 依赖的 CommonMark 解析器识别内联及引用式图片、链接，代码中的示例不计为图片引用。ZIP 使用相同相对路径，保留正文原文与图片顺序，相同内容路径只写入一次。
+- Markwon 4.6.2 官方实现 [CorePlugin](https://github.com/noties/Markwon/blob/v4.6.2/markwon-core/src/main/java/io/noties/markwon/core/CorePlugin.java)、[AsyncDrawableLoader](https://github.com/noties/Markwon/blob/v4.6.2/markwon-core/src/main/java/io/noties/markwon/image/AsyncDrawableLoader.java)、[AsyncDrawableScheduler](https://github.com/noties/Markwon/blob/v4.6.2/markwon-core/src/main/java/io/noties/markwon/image/AsyncDrawableScheduler.java)：通过核心图片 Span 和自定义加载器显示本笔记附件；后台采样解码并复用同图位图，正文替换或视图离开时取消 Span 加载。加载器仅匹配本笔记附件路径，不访问网络或任意本机文件。图片数据继续沿用已有附件字段，无同步格式变更。

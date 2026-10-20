@@ -21,6 +21,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +42,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import dev.colormemo.app.ui.theme.containerColor
 import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.NoteColor
+import dev.colormemo.core.model.NoteAttachment
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.html.tag.UnderlineHandler
 import io.noties.markwon.Markwon
@@ -116,18 +119,27 @@ internal fun ColorPalette(
 }
 
 @Composable
-internal fun MarkdownPreview(markdown: String, modifier: Modifier = Modifier) {
+internal fun MarkdownPreview(
+    markdown: String,
+    modifier: Modifier = Modifier,
+    attachments: List<NoteAttachment> = emptyList(),
+    onOpenImage: (NoteAttachment) -> Unit = {},
+) {
     val context = LocalContext.current
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
-    val markwon = remember(context) {
+    val scope = rememberCoroutineScope()
+    val currentOnOpen = rememberUpdatedState(onOpenImage)
+    val markwon = remember(context, attachments) {
         Markwon.builder(context)
             .usePlugin(HtmlPlugin.create().excludeDefaults(true).addHandler(UnderlineHandler()))
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TablePlugin.create(context))
             .usePlugin(TaskListPlugin.create(context))
+            .usePlugin(MarkdownImagesPlugin(context.resources, attachments, scope) { currentOnOpen.value(it) })
             .build()
     }
+    val renderKey = remember(markdown, markwon) { markdown to markwon }
     AndroidView(
         modifier = modifier.fillMaxWidth(),
         factory = { androidContext ->
@@ -142,10 +154,10 @@ internal fun MarkdownPreview(markdown: String, modifier: Modifier = Modifier) {
         update = { textView ->
             textView.setTextColor(foreground)
             textView.setLinkTextColor(linkColor)
-            // Only underline HTML tags are enabled; preview never fetches remote images.
-            if (textView.tag != markdown) {
+            // Refresh spans when attachments change, even if the text is unchanged.
+            if (textView.tag != renderKey) {
                 markwon.setMarkdown(textView, markdown)
-                textView.tag = markdown
+                textView.tag = renderKey
             }
         },
     )

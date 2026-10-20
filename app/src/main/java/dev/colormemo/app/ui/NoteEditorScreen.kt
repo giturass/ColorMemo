@@ -97,6 +97,9 @@ import dev.colormemo.app.data.attachmentStore
 import dev.colormemo.app.data.readImageAttachment
 import dev.colormemo.app.data.isImage
 import dev.colormemo.app.data.prepareAttachmentIntent
+import dev.colormemo.app.data.markdownAttachmentReferences
+import dev.colormemo.app.data.markdownPath
+import dev.colormemo.app.data.retainMarkdownAttachments
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.sync.SyncJson
@@ -142,6 +145,20 @@ internal fun NoteEditorScreen(
         )
     }
     var attachments by rememberSaveable(stateSaver = attachmentSaver) { mutableStateOf(note?.attachments.orEmpty()) }
+    var inlineImageIds by rememberSaveable {
+        val references = markdownAttachmentReferences(note?.content.orEmpty())
+        mutableStateOf(note?.attachments.orEmpty().filter { it.isImage && it.markdownPath in references }.map { it.id })
+    }
+    val attachmentReferences = remember(content.text) { markdownAttachmentReferences(content.text) }
+    // Keep removed images in the draft cache for text undo, but omit them from saves.
+    val retainedAttachments = remember(attachments, inlineImageIds, attachmentReferences) {
+        retainMarkdownAttachments(attachments, inlineImageIds, attachmentReferences)
+    }
+    val legacyAttachments = remember(retainedAttachments, attachmentReferences) {
+        retainedAttachments.filter { it.markdownPath !in attachmentReferences }
+    }
+    var imageInsertionStart by rememberSaveable { mutableStateOf(0) }
+    var imageInsertionEnd by rememberSaveable { mutableStateOf(0) }
     var selectedImageId by rememberSaveable { mutableStateOf<String?>(null) }
     var importingImage by remember { mutableStateOf(false) }
     var imageError by remember { mutableStateOf<String?>(null) }
@@ -165,11 +182,11 @@ internal fun NoteEditorScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val readOnly = note?.deletedAt != null
-    val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null, whiteboard, attachments)
+    val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null, whiteboard, retainedAttachments)
     val initialFingerprint = rememberSaveable { draft.fingerprint() }
-    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, attachments) { draft.fingerprint() }
+    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, retainedAttachments) { draft.fingerprint() }
     val dirty = fingerprint != initialFingerprint
-    val canSave = !saving && !importingImage && (title.isNotBlank() || content.text.isNotBlank() || attachments.isNotEmpty() ||
+    val canSave = !saving && !importingImage && (title.isNotBlank() || content.text.isNotBlank() || retainedAttachments.isNotEmpty() ||
         whiteboard?.strokes?.isNotEmpty() == true || (whiteboard != null && note != null)) &&
         title.length <= MAX_TITLE_LENGTH && content.text.length <= MAX_CONTENT_LENGTH
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -178,10 +195,20 @@ internal fun NoteEditorScreen(
             imageError = null
             scope.launch {
                 try {
-                    val attachment = withContext(Dispatchers.IO) { readImageAttachment(context, uri) }
-                    require(attachments.size < NoteAttachment.MAX_PER_NOTE) { "每条笔记最多插入 20 张图片（含已有文件）。" }
-                    require(attachments.sumOf { it.sizeBytes.toLong() } + attachment.sizeBytes <= NoteAttachment.MAX_NOTE_BYTES) { "每条笔记的图片及已有文件合计最多 8 MiB。" }
-                    attachments = attachments + attachment
+                    val imported = withContext(Dispatchers.IO) { readImageAttachment(context, uri) }
+                    val attachment = attachments.firstOrNull { it.markdownPath == imported.markdownPath } ?: imported
+                    val nextAttachments = retainedAttachments.filterNot { it.id == attachment.id } + attachment
+                    require(nextAttachments.size <= NoteAttachment.MAX_PER_NOTE) { "每条笔记最多插入 20 张图片（含已有文件）。" }
+                    require(nextAttachments.sumOf { it.sizeBytes.toLong() } <= NoteAttachment.MAX_NOTE_BYTES) { "每条笔记的图片及已有文件合计最多 8 MiB。" }
+                    val nextContent = content.copy(selection = TextRange(imageInsertionStart, imageInsertionEnd))
+                        .insertMarkdownImage(attachment)
+                    attachments = attachments.filterNot { it.id == attachment.id } + attachment
+                    inlineImageIds = (inlineImageIds + attachment.id).distinct()
+                    content = nextContent
+                    if (whiteboard == null) {
+                        preview = false
+                        requestEditorFocus = true
+                    } else showWhiteboardDetails = true
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: IllegalArgumentException) {
@@ -192,7 +219,7 @@ internal fun NoteEditorScreen(
                     importingImage = false
                 }
             }
-        }
+        } else importingImage = false
     }
     val openAttachment: (NoteAttachment) -> Unit = { attachment ->
         scope.launch {
@@ -302,17 +329,17 @@ internal fun NoteEditorScreen(
                         }
                         if (!preview && whiteboard == null) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
-                                MarkdownAction(Icons.Outlined.FormatBold, "加粗", saving) { content = content.insert("**", "**", "文字"); focusRequester.requestFocus() }
-                                MarkdownAction(Icons.Outlined.FormatItalic, "斜体", saving) { content = content.insert("*", "*", "文字"); focusRequester.requestFocus() }
-                                MarkdownAction(Icons.Outlined.FormatUnderlined, "下划线", saving) { content = content.insert("<u>", "</u>", "文字"); focusRequester.requestFocus() }
-                                MarkdownAction(Icons.Outlined.StrikethroughS, "删除线", saving) { content = content.insert("~~", "~~", "文字"); focusRequester.requestFocus() }
-                                TextButton(onClick = { content = content.insert("# ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving) { Text("H₁", style = MaterialTheme.typography.titleMedium) }
-                                TextButton(onClick = { content = content.insert("## ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving) { Text("H₂", style = MaterialTheme.typography.titleMedium) }
-                                MarkdownAction(Icons.AutoMirrored.Outlined.FormatListBulleted, "插入列表", saving) { content = content.insert("- ", "", "列表项", block = true); focusRequester.requestFocus() }
-                                MarkdownAction(Icons.Outlined.FormatListNumbered, "插入有序列表", saving) { content = content.insert("1. ", "", "列表项", block = true); focusRequester.requestFocus() }
-                                MarkdownAction(Icons.Outlined.CheckBox, "插入待办清单", saving) { content = content.insert("- [ ] ", "", "待办事项", block = true); focusRequester.requestFocus() }
-                                MarkdownAction(Icons.Outlined.Link, "插入链接", saving) { content = content.insert("[", "](https://)", "链接文字"); focusRequester.requestFocus() }
-                                MarkdownAction(Icons.Outlined.Code, "插入代码块", saving) { content = content.insert("```\n", "\n```", "代码", block = true); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.FormatBold, "加粗", saving || importingImage) { content = content.insert("**", "**", "文字"); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.FormatItalic, "斜体", saving || importingImage) { content = content.insert("*", "*", "文字"); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.FormatUnderlined, "下划线", saving || importingImage) { content = content.insert("<u>", "</u>", "文字"); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.StrikethroughS, "删除线", saving || importingImage) { content = content.insert("~~", "~~", "文字"); focusRequester.requestFocus() }
+                                TextButton(onClick = { content = content.insert("# ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving && !importingImage) { Text("H₁", style = MaterialTheme.typography.titleMedium) }
+                                TextButton(onClick = { content = content.insert("## ", "", "标题", block = true); focusRequester.requestFocus() }, enabled = !saving && !importingImage) { Text("H₂", style = MaterialTheme.typography.titleMedium) }
+                                MarkdownAction(Icons.AutoMirrored.Outlined.FormatListBulleted, "插入列表", saving || importingImage) { content = content.insert("- ", "", "列表项", block = true); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.FormatListNumbered, "插入有序列表", saving || importingImage) { content = content.insert("1. ", "", "列表项", block = true); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.CheckBox, "插入待办清单", saving || importingImage) { content = content.insert("- [ ] ", "", "待办事项", block = true); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.Link, "插入链接", saving || importingImage) { content = content.insert("[", "](https://)", "链接文字"); focusRequester.requestFocus() }
+                                MarkdownAction(Icons.Outlined.Code, "插入代码块", saving || importingImage) { content = content.insert("```\n", "\n```", "代码", block = true); focusRequester.requestFocus() }
                             }
                         }
                         Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
@@ -320,10 +347,13 @@ internal fun NoteEditorScreen(
                                 IconToggleButton(checked = showPalette, onCheckedChange = { showPalette = it }, enabled = !saving) { Icon(Icons.Outlined.Palette, "选择卡片颜色") }
                                 IconButton(onClick = {
                                     imageError = null
+                                    imageInsertionStart = if (preview && whiteboard == null) content.text.length else content.selection.start
+                                    imageInsertionEnd = if (preview && whiteboard == null) content.text.length else content.selection.end
+                                    importingImage = true
                                     focusManager.clearFocus(force = true)
                                     keyboardController?.hide()
                                     imagePicker.launch(arrayOf("image/*"))
-                                }, enabled = !saving && !importingImage && attachments.size < NoteAttachment.MAX_PER_NOTE) {
+                                }, enabled = !saving && !importingImage && retainedAttachments.size < NoteAttachment.MAX_PER_NOTE) {
                                     Icon(Icons.Outlined.AddPhotoAlternate, "插入图片")
                                 }
                                 IconButton(onClick = { showReminder = true }, enabled = !saving) { Icon(Icons.Outlined.NotificationsNone, "设置提醒") }
@@ -389,9 +419,9 @@ internal fun NoteEditorScreen(
                     if (!readOnly) IconButton(onClick = { reminderAt = null }, enabled = !saving) { Icon(Icons.Outlined.Close, "移除提醒", Modifier.size(18.dp)) }
                 }
             }
-            if (attachments.isNotEmpty()) {
+            if (legacyAttachments.isNotEmpty()) {
                 NoteImagesRow(
-                    attachments = attachments,
+                    attachments = legacyAttachments,
                     editable = !readOnly && !saving && !importingImage,
                     onOpen = { if (it.isImage) selectedImageId = it.id else openAttachment(it) },
                     onRemove = { image -> attachments = attachments.filterNot { it.id == image.id } },
@@ -408,12 +438,12 @@ internal fun NoteEditorScreen(
             } else if (preview || readOnly) {
                 if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 20.dp))
                 if (content.text.isBlank()) Text("还没有正文", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else MarkdownPreview(content.text)
+                else MarkdownPreview(content.text, attachments = retainedAttachments, onOpenImage = { selectedImageId = it.id })
             } else {
                 BasicTextField(
                     value = title,
                     onValueChange = { if (it.length <= MAX_TITLE_LENGTH) title = it },
-                    enabled = !saving,
+                    enabled = !saving && !importingImage,
                     textStyle = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -428,7 +458,7 @@ internal fun NoteEditorScreen(
                 BasicTextField(
                     value = content,
                     onValueChange = { if (it.text.length <= MAX_CONTENT_LENGTH) content = continueOrderedListAfterEnter(content, it) },
-                    enabled = !saving,
+                    enabled = !saving && !importingImage,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -445,7 +475,7 @@ internal fun NoteEditorScreen(
                 Text("标题最多 500 字，正文最多 100,000 字。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             // Scaffold subcomposes its content; request focus only after this field's composition.
-            LaunchedEffect(preview) {
+            LaunchedEffect(preview, requestEditorFocus) {
                 if (preview || whiteboard != null) {
                     focusManager.clearFocus(force = true)
                     keyboardController?.hide()
@@ -457,7 +487,7 @@ internal fun NoteEditorScreen(
             }
         }
     }
-    attachments.firstOrNull { it.id == selectedImageId }?.let { image ->
+    retainedAttachments.firstOrNull { it.id == selectedImageId }?.let { image ->
         NoteImageDialog(
             attachment = image,
             onOpenOriginal = { openAttachment(image) },
@@ -468,10 +498,12 @@ internal fun NoteEditorScreen(
         WhiteboardDetailsDialog(
             title = title,
             content = content,
+            attachments = retainedAttachments,
+            onOpenImage = { selectedImageId = it.id },
             onTitleChange = { if (it.length <= MAX_TITLE_LENGTH) title = it },
             onContentChange = { if (it.text.length <= MAX_CONTENT_LENGTH) content = it },
             readOnly = readOnly,
-            enabled = !saving,
+            enabled = !saving && !importingImage,
             onDismiss = {
                 focusManager.clearFocus(force = true)
                 keyboardController?.hide()
@@ -528,7 +560,7 @@ internal fun NoteEditorScreen(
                     Text("单指或触控笔写画，双指拖动画布或捏合缩放。画布向下延伸，双指向上拖动即可继续在下方创作；双指捏合缩小可查看完整画布。\n\n画笔设置可选择细签字笔、水彩笔、马克笔，并调整颜色和八档粗细。橡皮擦会移除碰到的整条笔画；撤销可找回擦除或清空的内容。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。")
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text("用底部工具栏插入格式，点击「预览」查看排版。")
+                        Text("用底部工具栏插入格式，点击「预览」查看排版。点击左下角图片按钮，在光标处插入 Markdown 图片；可移动图片语法调整位置，删除引用即可移除图片。预览中点击图片可查看原图。")
                         Text("# 一级标题\n## 二级标题\n**加粗文字**\n*斜体文字*\n<u>下划线文字</u>\n~~删除线文字~~\n- 列表项\n- [ ] 待办事项\n- [x] 已完成\n[链接文字](https://example.com)\n> 引用\n`行内代码`", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                         Text("也支持代码块、表格和删除线。", style = MaterialTheme.typography.bodySmall)
                     }
@@ -543,12 +575,15 @@ internal fun NoteEditorScreen(
 private fun WhiteboardDetailsDialog(
     title: String,
     content: TextFieldValue,
+    attachments: List<NoteAttachment>,
+    onOpenImage: (NoteAttachment) -> Unit,
     onTitleChange: (String) -> Unit,
     onContentChange: (TextFieldValue) -> Unit,
     readOnly: Boolean,
     enabled: Boolean,
     onDismiss: () -> Unit,
 ) {
+    var preview by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("标题与说明") },
@@ -557,10 +592,15 @@ private fun WhiteboardDetailsDialog(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (readOnly) {
+                if (!readOnly) {
+                    TextButton(onClick = { preview = !preview }, enabled = enabled, modifier = Modifier.align(Alignment.End)) {
+                        Text(if (preview) "编辑说明" else "预览说明")
+                    }
+                }
+                if (readOnly || preview) {
                     Text(title.ifBlank { "无标题白板" }, style = MaterialTheme.typography.titleLarge)
                     if (content.text.isBlank()) Text("还没有说明", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else MarkdownPreview(content.text)
+                    else MarkdownPreview(content.text, attachments = attachments, onOpenImage = onOpenImage)
                 } else {
                     OutlinedTextField(
                         value = title,
