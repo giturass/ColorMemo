@@ -2,6 +2,14 @@
 
 以下官方文档在开发时实际查询，用于核对接口与约束。依赖版本在 Gradle 配置中固定；此处链接不代表依赖自动跟随最新版。
 
+2026-10-21 Mermaid 与公式预览复核：
+
+- [Android 本地 WebView 内容](https://developer.android.com/develop/ui/views/layout/webapps/load-local-content)：使用 HTTPS 本地源及 `shouldInterceptRequest` 提供打包资源；关闭文件、content URI、网络加载及混合内容。脚本只来自本地资产，图片通过既有大小限制、EXIF 解码和 HTTPS 下载器按正文引用提供。
+- [Mermaid API 与安全级别](https://mermaid.js.org/config/usage.html)：固定 Mermaid 11.16.0，使用 `initialize` 和异步 `render`，保持 `strict`，关闭自动执行和错误 SVG 插入，逐图捕获错误，废弃过期渲染结果；不绑定图表内点击指令。
+- [KaTeX 配置](https://katex.org/docs/options.html)：固定 KaTeX 0.19.0，`trust: false`、`throwOnError: false`，限制宏展开次数及尺寸，错误保留原文；字体随应用离线提供。
+- [markdown-it](https://github.com/markdown-it/markdown-it) 与 [markdown-it-texmath](https://github.com/goessner/markdown-it-texmath)：固定 15.0.3 / 1.0.0，关闭原始 HTML，仅额外接受无属性的 `<u>`；支持 dollars、brackets 公式分隔符。任务动作使用既有 CommonMark 解析器定位的原始 UTF-16 偏移和渲染版本，避免旧页面或代码示例修改正文。
+- [GitHub Ubuntu 24.04 runner image](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md)：核对预装 Node.js，CI 使用内置 `node:test` 运行离线渲染回归测试，不在 Android 构建时下载渲染组件。
+
 - [离线优先数据层](https://developer.android.com/topic/architecture/data-layer/offline-first)：本地库作为 UI 数据来源，网络结果写回本地。
 - [Room DAO](https://developer.android.com/training/data-storage/room/accessing-data)：Flow 查询、Upsert 与查询参数。
 - [Room 事务](https://developer.android.com/reference/androidx/room/RoomDatabase#runInTransaction(java.lang.Runnable))：本地与同步写入在事务内合并。

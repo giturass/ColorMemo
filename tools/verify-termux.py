@@ -113,6 +113,7 @@ def main():
         command += ["-PcoreOnly=true", ":core:test"]
         log = WORK / "core-tests.log"
     else:
+        subprocess.run(["node", "--test", "tests/markdown-preview.test.cjs"], cwd=ROOT, check=True)
         sdk = prepare_sdk()
         env.update({"ANDROID_HOME": str(sdk), "ANDROID_SDK_ROOT": str(sdk)})
         candidates = [args.aapt2, Path(shutil.which("aapt2") or "/nonexistent"),

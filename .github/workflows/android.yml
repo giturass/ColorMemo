@@ -30,6 +30,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - name: Unit tests and Android lint
         run: ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug
+      - name: Offline Markdown renderer tests
+        run: node --test tests/markdown-preview.test.cjs
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v7

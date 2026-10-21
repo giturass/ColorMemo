@@ -8,3 +8,6 @@
 gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
+
+# Preserve upstream bytes so the pinned offline asset checksums survive checkout.
+app/src/main/assets/markdown/vendor/** -text -whitespace linguist-vendored

@@ -128,6 +128,10 @@ internal fun MarkdownPreview(
     onOpenImage: (NoteAttachment) -> Unit = {},
     onToggleTask: ((MarkdownTaskMarker) -> Unit)? = null,
 ) {
+    if (remember(markdown) { needsRichMarkdown(markdown) }) {
+        RichMarkdownPreview(markdown, modifier, attachments, onOpenImage, onToggleTask)
+        return
+    }
     val context = LocalContext.current
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
