@@ -19,7 +19,7 @@ class WhiteboardTextEditingTest {
             images = listOf(WhiteboardImage("image", "file", 0f, 0f, 100f, 100f)), texts = listOf(text))
         val drag = WhiteboardTextDrag(board, text, WhiteboardPoint(110f, 210f), 5f)
         assertSame(board, drag.update(WhiteboardPoint(111f, 211f)))
-        val moved = drag.update(WhiteboardPoint(2000f, 3000f))
+        val moved = drag.update(WhiteboardPoint(2000f, 5000f))
         val box = moved.texts.single()
         assertEquals(Whiteboard.CANVAS_WIDTH, box.x + box.width)
         assertEquals(Whiteboard.CANVAS_HEIGHT, box.y + box.height)

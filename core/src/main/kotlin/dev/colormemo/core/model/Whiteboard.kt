@@ -18,7 +18,8 @@ data class Whiteboard(
 
     companion object {
         const val CANVAS_WIDTH: Float = 1000f
-        const val CANVAS_HEIGHT: Float = 2000f
+        const val CANVAS_HEIGHT: Float = 4000f
+        const val MAX_CUTOUTS_PER_LAYER: Int = 64
         const val MAX_STROKES: Int = 500
         const val MAX_POINTS: Int = 6000
         const val MAX_IMAGES: Int = 20
@@ -32,6 +33,7 @@ data class Whiteboard(
 }
 
 /** Text stays editable; x/y mark its top left and explicit newlines preserve its layout. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class WhiteboardText(
     val id: String,
@@ -41,6 +43,8 @@ data class WhiteboardText(
     val width: Float,
     val fontSize: Float = 32f,
     val color: Long = 0xFF202124L,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val cutouts: List<WhiteboardRect> = emptyList(),
 ) {
     val height: Float get() = (text.count { it == '\n' } + 1) * fontSize * LINE_HEIGHT
 
@@ -57,6 +61,7 @@ fun validWhiteboardTextContent(value: String): Boolean = value.isNotBlank() &&
     }
 
 /** Images share the stroke coordinate system and are painted below all ink. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class WhiteboardImage(
     val id: String,
@@ -65,6 +70,8 @@ data class WhiteboardImage(
     val y: Float,
     val width: Float,
     val height: Float,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val cutouts: List<WhiteboardRect> = emptyList(),
 )
 
 @Serializable
@@ -78,7 +85,22 @@ data class WhiteboardStroke(
     val points: List<WhiteboardPoint>,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val brush: WhiteboardBrush = WhiteboardBrush.FINELINER,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val cutouts: List<WhiteboardRect> = emptyList(),
 )
 
 @Serializable
 data class WhiteboardPoint(val x: Float, val y: Float)
+
+/** Rectangular holes belong to existing layers, so later drawing can fill the area again. */
+@Serializable
+data class WhiteboardRect(val left: Float, val top: Float, val right: Float, val bottom: Float) {
+    val width: Float get() = right - left
+    val height: Float get() = bottom - top
+    fun contains(other: WhiteboardRect): Boolean = left <= other.left && top <= other.top &&
+        right >= other.right && bottom >= other.bottom
+    fun contains(point: WhiteboardPoint): Boolean = point.x in left..right && point.y in top..bottom
+    fun intersection(other: WhiteboardRect): WhiteboardRect? =
+        WhiteboardRect(maxOf(left, other.left), maxOf(top, other.top), minOf(right, other.right), minOf(bottom, other.bottom))
+            .takeIf { it.width > 0f && it.height > 0f }
+}

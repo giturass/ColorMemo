@@ -59,8 +59,8 @@ internal data class WhiteboardViewport(
 
     companion object {
         const val MIN_ZOOM = 1f
-        const val MAX_ZOOM = 8f
-        const val DEFAULT_ZOOM = 2f
+        const val MAX_ZOOM = 16f
+        const val DEFAULT_ZOOM = 4f
 
         private fun fitScale(width: Float, height: Float): Float {
             require(width.isFinite() && height.isFinite() && width > 0f && height > 0f)

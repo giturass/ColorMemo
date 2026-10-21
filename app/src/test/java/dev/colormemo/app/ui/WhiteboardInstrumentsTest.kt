@@ -144,9 +144,9 @@ class WhiteboardInstrumentsTest {
         WhiteboardInstrument.entries.forEach { instrument ->
             val initial = WhiteboardInstrumentState(radius = 200f)
             val drag = WhiteboardInstrumentDrag(initial, instrument, initial.center, 20f)
-            val moved = drag.update(WhiteboardPoint(-10f, 3000f))
+            val moved = drag.update(WhiteboardPoint(-10f, 5000f))
             assertEquals(200f, moved.centerX)
-            assertEquals(1800f, moved.centerY)
+            assertEquals(3800f, moved.centerY)
             val resized = moved.resized(900f)
             assertEquals(200f, resized.radius)
             resized.drawingPoints(instrument).forEach {

@@ -1,6 +1,5 @@
 package dev.colormemo.app.ui
 
-import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.widget.TextView
 import androidx.compose.foundation.Canvas
@@ -49,7 +48,6 @@ import io.noties.markwon.html.tag.UnderlineHandler
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.ext.tasklist.TaskListPlugin
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -128,24 +126,34 @@ internal fun MarkdownPreview(
     modifier: Modifier = Modifier,
     attachments: List<NoteAttachment> = emptyList(),
     onOpenImage: (NoteAttachment) -> Unit = {},
+    onToggleTask: ((MarkdownTaskMarker) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
+    val checkMarkColor = MaterialTheme.colorScheme.onPrimary.toArgb()
     val scope = rememberCoroutineScope()
-    val imageScope = remember(markdown, attachments, scope) {
+    // Toggling tasks keeps the same image cache for this preview's lifetime.
+    val imageScope = remember(attachments, scope) {
         CoroutineScope(scope.coroutineContext + Job(scope.coroutineContext[Job]))
     }
     DisposableEffect(imageScope) {
         onDispose { imageScope.cancel() }
     }
     val currentOnOpen = rememberUpdatedState(onOpenImage)
-    val markwon = remember(context, attachments, imageScope) {
+    val currentMarkdown = rememberUpdatedState(markdown)
+    val currentOnToggle = rememberUpdatedState(onToggleTask)
+    val tasksEnabled = onToggleTask != null
+    val markwon = remember(context, attachments, imageScope, tasksEnabled, linkColor, foreground, checkMarkColor) {
         Markwon.builder(context)
             .usePlugin(HtmlPlugin.create().excludeDefaults(true).addHandler(UnderlineHandler()))
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TablePlugin.create(context))
-            .usePlugin(TaskListPlugin.create(context))
+            .usePlugin(MarkdownTasksPlugin(linkColor, foreground, checkMarkColor,
+                if (tasksEnabled) { source, marker ->
+                    if (currentMarkdown.value == source) currentOnToggle.value?.invoke(marker)
+                } else null,
+            ))
             .usePlugin(MarkdownImagesPlugin(context.resources, attachments, imageScope) { currentOnOpen.value(it) })
             .build()
     }
@@ -157,7 +165,7 @@ internal fun MarkdownPreview(
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
                 setLineSpacing(0f, 1.4f)
                 setTextIsSelectable(true)
-                movementMethod = LinkMovementMethod.getInstance()
+                movementMethod = MarkdownTaskMovementMethod()
                 setPadding(0, 0, 0, 0)
             }
         },

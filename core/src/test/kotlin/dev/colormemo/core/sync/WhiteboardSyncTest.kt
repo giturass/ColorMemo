@@ -8,6 +8,7 @@ import dev.colormemo.core.model.WhiteboardBrush
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardStroke
 import dev.colormemo.core.model.WhiteboardText
+import dev.colormemo.core.model.WhiteboardRect
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -19,6 +20,51 @@ class WhiteboardSyncTest {
     private val note = Note(id = "note", revision = "revision", deviceId = "device", createdAt = 1, updatedAt = 1)
     private val stroke = WhiteboardStroke(points = listOf(WhiteboardPoint(0f, 0f), WhiteboardPoint(1000f, 1000f)))
     private val board = Whiteboard(strokes = listOf(stroke))
+
+    @Test
+    fun cutoutsAndLowerCanvasContentRoundTripInBackupAndEncryptedSync() {
+        val attachment = NoteAttachment.create("image.png", "image/png", byteArrayOf(1, 2))
+        val holes = listOf(WhiteboardRect(200f, 3000f, 500f, 3500f))
+        val clipped = Whiteboard(
+            strokes = listOf(stroke.copy(points = listOf(WhiteboardPoint(1000f, 4000f)), cutouts = holes)),
+            images = listOf(WhiteboardImage("image", attachment.id, 0f, 2000f, 1000f, 2000f, holes)),
+            texts = listOf(WhiteboardText("text", "下半页", 100f, 3000f, 600f, cutouts = holes)),
+        )
+        val document = SyncDocument(notes = listOf(note.copy(whiteboard = clipped, attachments = listOf(attachment))))
+        assertEquals(document, SyncJson.decodeDocument(SyncJson.encodeDocument(document)))
+        val key = SyncEncryptionKey.parse(SyncEncryptionKey.generate())
+        assertEquals(document, EncryptedSyncJson.decode(EncryptedSyncJson.encode(document, key), key))
+        val legacy = SyncJson.encode(SyncDocument(notes = listOf(note.copy(whiteboard = board))))
+        org.junit.Assert.assertFalse(legacy.contains("cutouts"))
+        assertEquals(board, SyncJson.decode(legacy).notes.single().whiteboard)
+    }
+
+    @Test
+    fun invalidCutoutsAreRejectedOnEveryLayerBeforeImportOrExport() {
+        val attachment = NoteAttachment.create("image.png", "image/png", byteArrayOf(1, 2))
+        val image = WhiteboardImage("image", attachment.id, 0f, 0f, 500f, 500f)
+        val text = WhiteboardText("text", "文字", 100f, 100f, 200f)
+        val area = WhiteboardRect(10f, 20f, 100f, 200f)
+        val invalid = listOf(listOf(area.copy(left = -1f)), listOf(area.copy(top = -1f)),
+            listOf(area.copy(right = 1001f)), listOf(area.copy(bottom = 4001f)),
+            listOf(area.copy(right = 10f)), listOf(area.copy(bottom = 19f)),
+            List(Whiteboard.MAX_CUTOUTS_PER_LAYER + 1) { area })
+        invalid.forEach { holes ->
+            listOf(Whiteboard(strokes = listOf(stroke.copy(cutouts = holes))),
+                Whiteboard(images = listOf(image.copy(cutouts = holes))),
+                Whiteboard(texts = listOf(text.copy(cutouts = holes)))).forEach { drawing ->
+                val document = SyncDocument(notes = listOf(note.copy(whiteboard = drawing, attachments = listOf(attachment))))
+                assertThrows(SyncProtocolException::class.java) { SyncJson.encode(document) }
+                assertThrows(SyncProtocolException::class.java) { SyncJson.decode(SyncJson.json.encodeToString(document)) }
+            }
+        }
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).forEach { value ->
+            listOf(area.copy(left = value), area.copy(top = value), area.copy(right = value), area.copy(bottom = value)).forEach { hole ->
+                val drawing = Whiteboard(strokes = listOf(stroke.copy(cutouts = listOf(hole))))
+                assertThrows(SyncProtocolException::class.java) { SyncJson.validate(SyncDocument(notes = listOf(note.copy(whiteboard = drawing)))) }
+            }
+        }
+    }
 
     @Test
     fun editableUnicodeTextRoundTripsThroughBackupAndEncryptedSync() {
@@ -37,7 +83,7 @@ class WhiteboardSyncTest {
         val text = WhiteboardText("text", "标注", 100f, 200f, 300f, 32f)
         val invalid = listOf(text.copy(id = ""), text.copy(text = " "), text.copy(text = "x".repeat(Whiteboard.MAX_TEXT_LENGTH + 1)),
             text.copy(text = "x\u0000"), text.copy(text = "x\uFFFF"),
-            text.copy(x = -1f), text.copy(y = -1f), text.copy(x = 701f), text.copy(y = 1990f),
+            text.copy(x = -1f), text.copy(y = -1f), text.copy(x = 701f), text.copy(y = 3990f),
             text.copy(width = 0f), text.copy(width = 1001f), text.copy(fontSize = 11.9f), text.copy(fontSize = 96.1f),
             text.copy(color = 0xFEFFFFFFL), text.copy(color = 0x100000000L))
         invalid.forEach { assertRejected(board.copy(texts = listOf(it))) }
@@ -80,7 +126,7 @@ class WhiteboardSyncTest {
     @Test
     fun imageLayersRejectMissingAttachmentsInvalidBoundsAndDuplicateIds() {
         val attachment = NoteAttachment.create("图片.png", "image/png", byteArrayOf(1, 2))
-        val image = WhiteboardImage("image", attachment.id, 0f, 0f, 1000f, 2000f)
+        val image = WhiteboardImage("image", attachment.id, 0f, 0f, 1000f, 4000f)
         val source = note.copy(whiteboard = board.copy(images = listOf(image)), attachments = listOf(attachment))
         val invalidImages = listOf(image.copy(attachmentId = "missing"), image.copy(id = ""), image.copy(x = -1f),
             image.copy(y = -1f), image.copy(x = 1f), image.copy(y = 1f), image.copy(width = 0f), image.copy(height = -1f))
@@ -136,7 +182,7 @@ class WhiteboardSyncTest {
     @Test
     fun singlePointStrokeAndAllCanvasEdgesAreValid() {
         val edges = listOf(WhiteboardPoint(0f, 0f), WhiteboardPoint(1000f, 0f),
-            WhiteboardPoint(0f, 2000f), WhiteboardPoint(1000f, 2000f))
+            WhiteboardPoint(0f, 4000f), WhiteboardPoint(1000f, 4000f))
         val drawing = Whiteboard(edges.mapIndexed { index, point ->
             WhiteboardStroke(
                 color = if (index % 2 == 0) 0xFF000000 else 0xFFFFFFFF,
@@ -179,7 +225,7 @@ class WhiteboardSyncTest {
     @Test
     fun outOfBoundsCoordinatesAreRejectedOnBothAxes() {
         listOf(WhiteboardPoint(-0.01f, 0f), WhiteboardPoint(0f, -0.01f),
-            WhiteboardPoint(1000.01f, 0f), WhiteboardPoint(0f, 2000.01f)).forEach { point ->
+            WhiteboardPoint(1000.01f, 0f), WhiteboardPoint(0f, 4000.01f)).forEach { point ->
             assertRejected(Whiteboard(listOf(stroke.copy(points = listOf(point)))))
         }
     }

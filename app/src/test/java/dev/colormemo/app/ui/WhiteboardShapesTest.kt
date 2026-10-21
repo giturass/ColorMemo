@@ -142,6 +142,21 @@ class WhiteboardShapesTest {
     }
 
     @Test
+    fun triangularPyramidHasExactlyThreeBaseVerticesAndSixEdges() {
+        val start = point(100f, 2100f)
+        val end = point(700f, 3900f)
+        val points = WhiteboardShape.TRIANGULAR_PYRAMID.points(start, end, 3f)
+        assertEquals(points, WhiteboardShape.TRIANGULAR_PYRAMID.points(end, start, 3f))
+        val vertices = points.distinct()
+        assertEquals(4, vertices.size)
+        val edges = points.zipWithNext().map { (a, b) -> setOf(a, b) }.toSet()
+        assertEquals(6, edges.size)
+        vertices.forEach { vertex -> assertEquals(3, edges.count { vertex in it }) }
+        assertEquals(2100f, vertices.minOf { it.y })
+        assertEquals(3900f, vertices.maxOf { it.y })
+    }
+
+    @Test
     fun cubeHasThreeSquareFaceEdgesAndSphereKeepsRoundOutline() {
         val cube = WhiteboardShape.CUBE.points(point(100f, 200f), point(700f, 1000f), 3f)
         val aligned = cube.zipWithNext().filter { (a, b) -> a.x == b.x || a.y == b.y }

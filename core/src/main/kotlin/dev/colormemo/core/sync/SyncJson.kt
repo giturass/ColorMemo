@@ -163,6 +163,13 @@ object SyncJson {
     }
 
     private fun validateWhiteboard(whiteboard: Whiteboard, attachments: List<NoteAttachment>) {
+        val cutoutLists = whiteboard.strokes.map { it.cutouts } + whiteboard.images.map { it.cutouts } + whiteboard.texts.map { it.cutouts }
+        if (cutoutLists.any { areas -> areas.size > Whiteboard.MAX_CUTOUTS_PER_LAYER || areas.any {
+                !it.left.isFinite() || !it.top.isFinite() || !it.right.isFinite() || !it.bottom.isFinite() ||
+                    it.left < 0f || it.top < 0f || it.right > Whiteboard.CANVAS_WIDTH || it.bottom > Whiteboard.CANVAS_HEIGHT ||
+                    it.width <= 0f || it.height <= 0f
+            } }
+        ) throw SyncProtocolException("白板裁剪区域无效或数量超限，未覆盖任何数据。")
         if (whiteboard.images.size > Whiteboard.MAX_IMAGES ||
             whiteboard.images.map { it.id }.toSet().size != whiteboard.images.size
         ) throw SyncProtocolException("白板图片数量或编号无效，未覆盖任何数据。")

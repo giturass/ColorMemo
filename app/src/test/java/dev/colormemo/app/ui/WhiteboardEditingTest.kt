@@ -170,7 +170,7 @@ class WhiteboardEditingTest {
 
     @Test
     fun recordedPointsClampAndRoundToHalfUnits() {
-        assertEquals(point(0f, 2000f), whiteboardPoint(-10f, 2050f))
+        assertEquals(point(0f, 4000f), whiteboardPoint(-10f, 4050f))
         assertEquals(point(1000f, 1750f), whiteboardPoint(1050f, 1750f))
         assertEquals(point(101f, 200.5f), whiteboardPoint(100.9f, 200.6f))
     }

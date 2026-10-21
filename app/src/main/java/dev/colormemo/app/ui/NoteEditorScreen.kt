@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Preview
@@ -191,6 +192,10 @@ internal fun NoteEditorScreen(
     var showWhiteboardDetails by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    var imageExportPending by rememberSaveable { mutableStateOf(false) }
+    var exportingImage by remember { mutableStateOf(false) }
+    var exportNotice by remember { mutableStateOf<String?>(null) }
+    var exportFailed by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
@@ -201,7 +206,7 @@ internal fun NoteEditorScreen(
     val initialFingerprint = rememberSaveable { draft.fingerprint() }
     val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, retainedAttachments) { draft.fingerprint() }
     val dirty = fingerprint != initialFingerprint
-    val canSave = !saving && !importingImage && pendingWhiteboardImage == null && (title.isNotBlank() || content.text.isNotBlank() || retainedAttachments.isNotEmpty() ||
+    val canSave = !saving && !importingImage && !imageExportPending && !exportingImage && pendingWhiteboardImage == null && (title.isNotBlank() || content.text.isNotBlank() || retainedAttachments.isNotEmpty() ||
         whiteboard?.hasContent == true || (whiteboard != null && note != null)) &&
         title.length <= MAX_TITLE_LENGTH && content.text.length <= MAX_CONTENT_LENGTH
     suspend fun insertImage(imported: NoteAttachment) {
@@ -249,6 +254,40 @@ internal fun NoteEditorScreen(
             }
         } else importingImage = false
     }
+    val imageExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+        imageExportPending = false
+        val board = whiteboard
+        if (uri != null && board != null) {
+            val sources = retainedAttachments
+            exportingImage = true
+            scope.launch {
+                try {
+                    saveWhiteboardPng(context, uri, board, sources)
+                    exportFailed = false
+                    exportNotice = "白板图片已保存。"
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    exportFailed = true
+                    exportNotice = "图片保存失败，请重新选择保存位置后重试。"
+                } finally { exportingImage = false }
+            }
+        }
+    }
+    val exportImage: () -> Unit = {
+        menuOpen = false
+        exportNotice = null
+        imageExportPending = true
+        val name = title.trim().replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").take(80).ifBlank { "白板" }
+        try {
+            imageExportPicker.launch("$name.png")
+        } catch (_: Exception) {
+            imageExportPending = false
+            exportFailed = true
+            exportNotice = "无法打开文件保存窗口，请重试。"
+        }
+    }
+    val canExportImage = whiteboard != null && !saving && !importingImage && !imageExportPending && !exportingImage && pendingWhiteboardImage == null
     val openAttachment: (NoteAttachment) -> Unit = { attachment ->
         scope.launch {
             try {
@@ -269,7 +308,7 @@ internal fun NoteEditorScreen(
     val remoteChanged = !state.loading && note != null && currentNote != null && currentNote.revision != note.revision
 
     val close: () -> Unit = {
-        if (!saving && !importingImage && pendingWhiteboardImage == null) {
+        if (!saving && !importingImage && !imageExportPending && !exportingImage && pendingWhiteboardImage == null) {
             if (dirty && !readOnly) showLeaveDialog = true else onClose()
         }
     }
@@ -346,6 +385,8 @@ internal fun NoteEditorScreen(
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                     ModifiedTimeLabel(note)
                                     if (whiteboard != null) DropdownMenuItem(text = { Text("标题与说明") }, onClick = { menuOpen = false; showWhiteboardDetails = true })
+                                    if (whiteboard != null) DropdownMenuItem(text = { Text("保存为图片（PNG）") },
+                                        leadingIcon = { Icon(Icons.Outlined.SaveAlt, null) }, enabled = canExportImage, onClick = exportImage)
                                 }
                             }
                             TextButton(onClick = { callbacks.onRestore(note.id); onClose() }, modifier = Modifier.align(Alignment.CenterEnd)) { Text("恢复便签") }
@@ -405,6 +446,8 @@ internal fun NoteEditorScreen(
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                     ModifiedTimeLabel(note)
                                     HorizontalDivider()
+                                    if (whiteboard != null) DropdownMenuItem(text = { Text("保存为图片（PNG）") },
+                                        leadingIcon = { Icon(Icons.Outlined.SaveAlt, null) }, enabled = canExportImage, onClick = exportImage)
                                     DropdownMenuItem(text = { Text(if (archived) "取消归档" else "归档") }, leadingIcon = { Icon(if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null) }, onClick = { menuOpen = false; archived = !archived })
                                     if (note != null) {
                                         DropdownMenuItem(text = { Text("移到回收站") }, leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) }, onClick = { menuOpen = false; showDeleteDialog = true })
@@ -443,6 +486,13 @@ internal fun NoteEditorScreen(
             }
             saveError?.let { EditorNotice(it, isError = true) }
             imageError?.let { EditorNotice(it, isError = true) }
+            exportNotice?.let { EditorNotice(it, isError = exportFailed) }
+            if (exportingImage) {
+                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("正在保存白板图片…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
             if (importingImage) {
                 Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -477,13 +527,20 @@ internal fun NoteEditorScreen(
                     attachments = retainedAttachments,
                     imageToInsert = pendingWhiteboardImage,
                     onImageInserted = { pendingWhiteboardImage = null },
-                    readOnly = readOnly || saving || importingImage,
+                    readOnly = readOnly || saving || importingImage || imageExportPending || exportingImage,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             } else if (preview || readOnly) {
                 if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 20.dp))
                 if (content.text.isBlank()) Text("还没有正文", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else MarkdownPreview(content.text, attachments = retainedAttachments, onOpenImage = { selectedImageId = it.id })
+                else MarkdownPreview(
+                    content.text,
+                    attachments = retainedAttachments,
+                    onOpenImage = { selectedImageId = it.id },
+                    onToggleTask = if (!readOnly && !saving && !importingImage) {
+                        { marker -> if (!saving && !importingImage) content = content.toggleMarkdownTask(marker) }
+                    } else null,
+                )
             } else {
                 BasicTextField(
                     value = title,
@@ -641,12 +698,12 @@ internal fun NoteEditorScreen(
             text = {
                 if (whiteboard != null) {
                     Text(
-                        "单指或触控笔写画，双指拖动画布或捏合缩放。画布向下延伸，双指向上拖动即可继续在下方创作；双指捏合缩小可查看完整画布。\n\n点击画笔图标，设置签字笔、水彩笔、马克笔、24 种预设颜色、自定义色值和八档粗细。图形、圆规绘制与新增文字统一使用当前画笔颜色。\n\n点击图形图标，选择直线、箭头、曲箭头、双箭头、矩形、正方形、圆形、椭圆、三角形、梯形、平行四边形、六边形、圆柱、圆锥、棱锥、立方体、球体、角或坐标系。三角形先拖出第一条边，再从任一端点拖出第二条边，松手自动连接第三条边；角先拖出第一条线段，再从任一端点拖出第二条线段，松手形成角，两边方向和长度均可自由确定。点击「重新开始」或撤销可取消这两种工具未完成的第一条线段。其他图形按住拖动调整大小，松手完成。正方形保持等边，圆形与球体保持正圆；图形沿用当前笔型和粗细。\n\n图形菜单底部可选择圆规或量角器。圆规：拖动圆心移动，用滑块调整半径和起笔方向；按住笔尖顺时针或逆时针旋转画弧，圆心和半径固定，松手结束，也可点击「画圆」绘制整圆。量角器：默认水平放置，位置与方向独立于圆规；拖动中心移动，下方圆点旋转基线，圆弧上的圆点调整测量边，顶部显示夹角；滑块可调整大小与角度，点击「绘制角」保留对应的角。测量工具本身只在编辑时显示，双指仍可移动与缩放画布。\n\n点击网格按钮显示或隐藏辅助线，绘图时显示横纵参考线及拖动范围；辅助线不写入白板。点击文字按钮插入多行文字并调整字号。在文字工具中，拖动文字移动，轻点文字编辑或删除，轻点空白处可继续插入。文字保存后仍可编辑，也会随白板同步、备份和导出。\n\n点击图片按钮，选择本地图片或输入远程图片地址。图片放在当前可见画布中央，可在图片上涂鸦，保存后可离线编辑。选中橡皮后再次点击可调节擦除范围，仅擦除扫过的局部笔迹，保留文字与图片；插图、文字、绘画、图形和清空均可撤销或重做。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。",
+                        "单指或触控笔写画，双指拖动画布或捏合缩放。画布为 1000×4000，双指向上拖动即可继续在下方创作；双指捏合缩小可查看完整画布。\n\n点击画笔图标，设置签字笔、水彩笔、马克笔、24 种预设颜色、自定义色值和八档粗细。图形、圆规绘制与新增文字统一使用当前画笔颜色。\n\n点击图形图标，选择直线、箭头、曲箭头、双箭头、矩形、正方形、圆形、椭圆、三角形、梯形、平行四边形、六边形、圆柱、圆锥、四棱锥、三棱锥、立方体、球体、角或坐标系。三角形先拖出第一条边，再从任一端点拖出第二条边，松手自动连接第三条边；角先拖出第一条线段，再从任一端点拖出第二条线段，松手形成角，两边方向和长度均可自由确定。点击「重新开始」或撤销可取消这两种工具未完成的第一条线段。其他图形按住拖动调整大小，松手完成。正方形保持等边，圆形与球体保持正圆；图形沿用当前笔型和粗细。\n\n图形菜单底部可选择圆规或量角器。圆规：拖动圆心移动，用滑块调整半径和起笔方向；按住笔尖顺时针或逆时针旋转画弧，圆心和半径固定，松手结束，也可点击「画圆」绘制整圆。量角器：默认水平放置，位置与方向独立于圆规；拖动中心移动，下方圆点旋转基线，圆弧上的圆点调整测量边，顶部显示夹角；滑块可调整大小与角度，点击「绘制角」保留对应的角。测量工具本身只在编辑时显示，双指仍可移动与缩放画布。\n\n点击网格按钮显示或隐藏辅助线，绘图时显示横纵参考线及拖动范围；辅助线不写入白板。点击文字按钮插入多行文字并调整字号。在文字工具中，拖动文字移动，轻点文字编辑或删除，轻点空白处可继续插入。文字保存后仍可编辑，也会随白板同步、备份和导出。\n\n点击图片按钮，选择本地图片或输入远程图片地址。图片放在当前可见画布中央，可在图片上涂鸦，保存后可离线编辑。选中橡皮后再次点击可调节擦除范围，仅擦除扫过的局部笔迹，保留文字与图片；插图、文字、绘画、图形和清空均可撤销或重做。\n\n点击裁剪按钮，拖动框选后点击「剪除选区」，剪除区域内的笔迹、文字与图片，选区外保留。可取消选区、重新框选或撤销剪除。双指接管时取消本次框选，保留之前的选区。\n\n底部中间三点菜单内选择「保存为图片（PNG）」，将整张白板保存到设备，包含裁剪效果，不包含辅助线、选框和测量工具。\n\n点击「标题与说明」编辑附加文字，点击「保存」保留白板。",
                         modifier = Modifier.verticalScroll(rememberScrollState()),
                     )
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text("用底部工具栏插入格式，点击「预览」查看排版。点击左下角图片按钮，选择本地图片或输入远程图片地址，在光标处插入 Markdown 图片；可移动图片语法调整位置，删除引用即可移除图片。预览中点击本地图片可查看原图；远程图片需联网加载。")
+                        Text("用底部工具栏插入格式，点击「预览」查看排版。预览中可直接点击待办复选框，勾选或取消完成，点击「保存」保留修改。点击左下角图片按钮，选择本地图片或输入远程图片地址，在光标处插入 Markdown 图片；可移动图片语法调整位置，删除引用即可移除图片。预览中点击本地图片可查看原图；远程图片需联网加载。")
                         Text("# 一级标题\n## 二级标题\n**加粗文字**\n*斜体文字*\n<u>下划线文字</u>\n~~删除线文字~~\n- 列表项\n- [ ] 待办事项\n- [x] 已完成\n[链接文字](https://example.com)\n> 引用\n`行内代码`", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                         Text("也支持代码块、表格和删除线。", style = MaterialTheme.typography.bodySmall)
                     }
@@ -686,7 +743,14 @@ private fun WhiteboardDetailsDialog(
                 if (readOnly || preview) {
                     Text(title.ifBlank { "无标题白板" }, style = MaterialTheme.typography.titleLarge)
                     if (content.text.isBlank()) Text("还没有说明", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else MarkdownPreview(content.text, attachments = attachments, onOpenImage = onOpenImage)
+                    else MarkdownPreview(
+                        content.text,
+                        attachments = attachments,
+                        onOpenImage = onOpenImage,
+                        onToggleTask = if (!readOnly && enabled) {
+                            { marker -> onContentChange(content.toggleMarkdownTask(marker)) }
+                        } else null,
+                    )
                 } else {
                     OutlinedTextField(
                         value = title,

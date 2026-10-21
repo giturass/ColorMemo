@@ -81,7 +81,8 @@ internal fun WhiteboardTextEditor(
         confirmButton = {
             TextButton(enabled = value.isNotBlank() && error == null, onClick = {
                 val text = WhiteboardText(existing?.id ?: UUID.randomUUID().toString(), value,
-                    existing?.x ?: (position.x - width / 2f), existing?.y ?: (position.y - height / 2f), width, fontSize, initialColor)
+                    existing?.x ?: (position.x - width / 2f), existing?.y ?: (position.y - height / 2f), width, fontSize, initialColor,
+                    cutouts = existing?.cutouts.orEmpty())
                 onSave(text.movedTo(text.x, text.y))
             }) { Text(if (existing == null) "插入" else "完成") }
         },
@@ -104,11 +105,15 @@ internal fun DrawScope.drawWhiteboardTexts(texts: List<WhiteboardText>, scale: F
             native.translate(origin.x, origin.y)
             native.scale(scale, scale)
             texts.forEach { text ->
-                paint.color = text.color.toInt()
-                paint.textSize = text.fontSize
-                text.text.split('\n').forEachIndexed { index, line ->
-                    native.drawText(line, text.x, text.y + text.fontSize + index * text.fontSize * WhiteboardText.LINE_HEIGHT, paint)
-                }
+                native.save()
+                try {
+                    text.cutouts.forEach { native.clipOutRect(it.left, it.top, it.right, it.bottom) }
+                    paint.color = text.color.toInt()
+                    paint.textSize = text.fontSize
+                    text.text.split('\n').forEachIndexed { index, line ->
+                        native.drawText(line, text.x, text.y + text.fontSize + index * text.fontSize * WhiteboardText.LINE_HEIGHT, paint)
+                    }
+                } finally { native.restore() }
             }
         } finally {
             native.restore()

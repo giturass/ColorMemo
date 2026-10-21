@@ -53,3 +53,13 @@ WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹
 - [Android Canvas.drawText](https://developer.android.com/reference/android/graphics/Canvas#drawText(java.lang.String,float,float,android.graphics.Paint))：按固定白板坐标设置文字大小和各行基线，编辑画布与卡片预览共用绘制方法。
 - [SVG 2 text/tspan](https://www.w3.org/TR/SVG2/text.html#TextElement)：使用 `text` 字体、颜色与 `tspan` 的显式 `x/y` 保留换行，XML 转义避免把文字解释为元素。
 - [kotlinx.serialization 未知字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html)：可选 `texts` 空列表不写出；沿用严格未知字段校验，旧版本拒绝包含新图层的快照，避免重写时丢失文字。收发均验证数量、内容、有限坐标、字号和边界。
+
+2026-10-21 画布扩展、局部裁剪与 PNG 保存复核：
+
+- [SVG 2 坐标与 viewBox](https://www.w3.org/TR/SVG2/coords.html) 与上述 kotlinx.serialization 严格字段处理：画布、预览和输出统一采用 `1000×4000`；既有坐标保持不变。图层可选 `cutouts` 空列表不写出，非空时旧客户端拒绝未知字段，数值边界与每层 64 个矩形上限由收发校验器检查。
+- [Android Canvas.clipOutRect](https://developer.android.com/reference/android/graphics/Canvas)（API 26 起提供）与 [CSS Masking 1](https://www.w3.org/TR/css-masking-1/)：矩形缺口从所属图层的绘制区域中扣除，重叠缺口按并集合成；Android 使用差集裁切，SVG 使用白底、黑色缺口的亮度遮罩，文字、图片和半透明笔型保持选区外的显示效果。
+- [Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files) 与 [Bitmap.compress](https://developer.android.com/reference/android/graphics/Bitmap)：`CreateDocument("image/png")` 使用系统保存窗口选择目标 URI，再通过内容解析器的输出流写 PNG，不新增广泛存储权限。后台绘制完整文档，逐张解码图片并及时释放位图，输出不含编辑工具覆盖层。
+
+2026-10-21 待办预览交互复核：
+
+- [CommonMark 0.16.1 SourceSpan](https://github.com/commonmark/commonmark-java/blob/commonmark-parent-0.16.1/commonmark/src/main/java/org/commonmark/node/SourceSpan.java) 与 [版本说明](https://github.com/commonmark/commonmark-java/blob/commonmark-parent-0.16.1/CHANGELOG.md)：解析器及表格、删除线扩展统一为 0.16.1，启用块节点源码位置。仅把列表段落开头的原始 `[ ]`、`[x]`、`[X]` 转成待办，点击只改写对应状态字符；行列位置按 UTF-16 计算，保留原换行、缩进及其余正文。

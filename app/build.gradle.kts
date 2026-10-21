@@ -31,8 +31,8 @@ android {
         applicationId = "dev.colormemo.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.2.12"
+        versionCode = 24
+        versionName = "0.2.13"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -105,6 +105,11 @@ dependencies {
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
     implementation("io.noties.markwon:ext-tables:4.6.2")
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
+    // Source spans let preview checkboxes update the exact Markdown marker.
+    // Keep the parser extensions aligned with the source-span parser API.
+    implementation("com.atlassian.commonmark:commonmark:0.16.1")
+    implementation("com.atlassian.commonmark:commonmark-ext-gfm-tables:0.16.1")
+    implementation("com.atlassian.commonmark:commonmark-ext-gfm-strikethrough:0.16.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }

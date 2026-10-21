@@ -3,14 +3,21 @@ package dev.colormemo.app.ui
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardPoint
 import dev.colormemo.core.model.WhiteboardText
+import dev.colormemo.core.model.WhiteboardRect
 
-internal fun WhiteboardText.movedTo(x: Float, y: Float): WhiteboardText = copy(
-    x = x.coerceIn(0f, Whiteboard.CANVAS_WIDTH - width),
-    y = y.coerceIn(0f, Whiteboard.CANVAS_HEIGHT - height),
-)
+internal fun WhiteboardText.movedTo(x: Float, y: Float): WhiteboardText {
+    val nextX = x.coerceIn(0f, Whiteboard.CANVAS_WIDTH - width)
+    val nextY = y.coerceIn(0f, Whiteboard.CANVAS_HEIGHT - height)
+    val bounds = WhiteboardRect(nextX, nextY, nextX + width, nextY + height)
+    return copy(x = nextX, y = nextY, cutouts = cutouts.mapNotNull {
+        WhiteboardRect(it.left + nextX - this.x, it.top + nextY - this.y,
+            it.right + nextX - this.x, it.bottom + nextY - this.y).intersection(bounds)
+    })
+}
 
 internal fun Whiteboard.textAt(point: WhiteboardPoint, padding: Float = 0f): WhiteboardText? = texts.asReversed().firstOrNull {
-    point.x in (it.x - padding)..(it.x + it.width + padding) && point.y in (it.y - padding)..(it.y + it.height + padding)
+    point.x in (it.x - padding)..(it.x + it.width + padding) && point.y in (it.y - padding)..(it.y + it.height + padding) &&
+        it.cutouts.none { hole -> hole.contains(point) }
 }
 
 internal class WhiteboardTextDrag(

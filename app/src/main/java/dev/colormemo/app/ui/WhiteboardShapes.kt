@@ -25,7 +25,8 @@ internal enum class WhiteboardShape(val displayName: String, val isArrow: Boolea
     HEXAGON("六边形"),
     CYLINDER("圆柱"),
     CONE("圆锥"),
-    PYRAMID("棱锥"),
+    PYRAMID("四棱锥"),
+    TRIANGULAR_PYRAMID("三棱锥"),
     CUBE("立方体"),
     SPHERE("球体"),
     ANGLE("角"),
@@ -109,6 +110,13 @@ internal fun WhiteboardShape.points(
         val baseY = bottom - rimRadius
         return listOf(whiteboardPoint(left, baseY), whiteboardPoint(centerX, top)) +
             ellipsePoints(centerX, baseY, width / 2f, rimRadius, 0.0, 2 * PI, 48)
+    }
+    if (this == WhiteboardShape.TRIANGULAR_PYRAMID) {
+        val apex = whiteboardPoint(centerX, top)
+        val leftBase = whiteboardPoint(left, top + height * 0.7f)
+        val frontBase = whiteboardPoint(left + width * 0.6f, bottom)
+        val rightBase = whiteboardPoint(right, top + height * 0.65f)
+        return listOf(apex, leftBase, frontBase, rightBase, leftBase, apex, rightBase, apex, frontBase)
     }
     if (this == WhiteboardShape.PYRAMID) {
         val apex = whiteboardPoint(centerX, top)
