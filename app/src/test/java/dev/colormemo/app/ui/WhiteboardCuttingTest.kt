@@ -82,7 +82,7 @@ class WhiteboardCuttingTest {
         val later = WhiteboardStroke(points = listOf(WhiteboardPoint(300f, 300f)))
         val svg = whiteboardSvg(after.copy(strokes = after.strokes + later), mapOf("attachment" to "data:image/png;base64,AA=="))
         val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(svg.byteInputStream())
-        assertEquals("0 0 1000 4000", doc.documentElement.getAttribute("viewBox"))
+        assertEquals("0 0 1000 1000", doc.documentElement.getAttribute("viewBox"))
         val masks = doc.getElementsByTagName("mask")
         assertEquals(3, masks.length)
         val ids = mutableSetOf<String>()
@@ -90,6 +90,7 @@ class WhiteboardCuttingTest {
             val mask = masks.item(index) as Element
             ids += mask.getAttribute("id")
             assertEquals("userSpaceOnUse", mask.getAttribute("maskUnits"))
+            assertEquals("1000", mask.getAttribute("height"))
             val rectangles = mask.getElementsByTagName("rect")
             assertEquals(3, rectangles.length)
             assertEquals("white", (rectangles.item(0) as Element).getAttribute("fill"))

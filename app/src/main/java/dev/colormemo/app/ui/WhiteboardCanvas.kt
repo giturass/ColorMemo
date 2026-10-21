@@ -174,6 +174,10 @@ internal fun WhiteboardEditor(
     var eraserRadius by rememberSaveable { mutableStateOf(DEFAULT_ERASER_RADIUS) }
     var showEraserSettings by rememberSaveable { mutableStateOf(false) }
     var viewport by rememberSaveable(stateSaver = ViewportSaver) { mutableStateOf(WhiteboardViewport()) }
+    // Keep room while editing even after erasing or undoing lower content. Reopening
+    // and exports derive their height from the saved layers instead.
+    var expandedCanvasHeight by rememberSaveable { mutableStateOf(whiteboard.canvasHeight) }
+    val contentCanvasHeight by rememberUpdatedState(remember(whiteboard) { whiteboard.canvasHeight })
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var shapeBase by remember(tool, shape, readOnly) { mutableStateOf<WhiteboardTwoEdgeBase?>(null) }
     var shapePreview by remember(tool, shape, readOnly) { mutableStateOf(emptyList<WhiteboardPoint>()) }
@@ -192,7 +196,14 @@ internal fun WhiteboardEditor(
     val controlsEnabled = !readOnly && !drawing
     val imageBitmaps = rememberWhiteboardImages(whiteboard, attachments, 1200)
 
+    fun boardHeight(): Float = maxOf(expandedCanvasHeight, contentCanvasHeight)
+
+    fun expandCanvas(bottom: Float) {
+        expandedCanvasHeight = maxOf(expandedCanvasHeight, Whiteboard.heightForContent(bottom))
+    }
+
     fun publish(next: Whiteboard) {
+        expandedCanvasHeight = maxOf(expandedCanvasHeight, next.canvasHeight)
         lastPublished = next
         onChange(next)
     }
@@ -204,13 +215,13 @@ internal fun WhiteboardEditor(
 
     fun visibleInstrumentState(): WhiteboardInstrumentState {
         if (canvasSize.width <= 0 || canvasSize.height <= 0) return WhiteboardInstrumentState()
-        val transform = viewport.transform(canvasSize.width.toFloat(), canvasSize.height.toFloat())
+        val transform = viewport.transform(canvasSize.width.toFloat(), canvasSize.height.toFloat(), boardHeight())
         val first = transform.screenToWorld(0f, 0f)
         val last = transform.screenToWorld(canvasSize.width.toFloat(), canvasSize.height.toFloat())
         val left = first.x.coerceIn(0f, Whiteboard.CANVAS_WIDTH)
         val right = last.x.coerceIn(0f, Whiteboard.CANVAS_WIDTH)
-        val top = first.y.coerceIn(0f, Whiteboard.CANVAS_HEIGHT)
-        val bottom = last.y.coerceIn(0f, Whiteboard.CANVAS_HEIGHT)
+        val top = first.y.coerceIn(0f, transform.canvasHeight)
+        val bottom = last.y.coerceIn(0f, transform.canvasHeight)
         return WhiteboardInstrumentState((left + right) / 2f, (top + bottom) / 2f,
             minOf(180f, (right - left) * 0.3f, (bottom - top) * 0.3f).coerceAtLeast(MIN_INSTRUMENT_RADIUS)).constrained()
     }
@@ -230,6 +241,10 @@ internal fun WhiteboardEditor(
     // A replaced document must not inherit undo entries from the previous one.
     LaunchedEffect(whiteboard) {
         if (whiteboard != lastPublished) {
+            expandedCanvasHeight = whiteboard.canvasHeight
+            if (canvasSize.width > 0 && canvasSize.height > 0) {
+                viewport = viewport.constrained(canvasSize.width.toFloat(), canvasSize.height.toFloat(), expandedCanvasHeight)
+            }
             undoBoards = emptyList()
             redoBoards = emptyList()
             shapeBase = null
@@ -251,7 +266,7 @@ internal fun WhiteboardEditor(
     }
     LaunchedEffect(imageToInsert, canvasSize, readOnly) {
         if (imageToInsert != null && !readOnly && canvasSize.width > 0 && canvasSize.height > 0) {
-            val image = imageToInsert.placedIn(viewport.transform(canvasSize.width.toFloat(), canvasSize.height.toFloat()))
+            val image = imageToInsert.placedIn(viewport.transform(canvasSize.width.toFloat(), canvasSize.height.toFloat(), boardHeight()))
             rememberUndo(currentBoard)
             publish(currentBoard.copy(images = currentBoard.images + image))
             tool = WhiteboardTool.PEN
@@ -434,7 +449,7 @@ internal fun WhiteboardEditor(
                     .onSizeChanged {
                         canvasSize = it
                         if (it.width > 0 && it.height > 0) {
-                            viewport = viewport.constrained(it.width.toFloat(), it.height.toFloat())
+                            viewport = viewport.constrained(it.width.toFloat(), it.height.toFloat(), boardHeight())
                         }
                     }
                     .semantics {
@@ -469,7 +484,8 @@ internal fun WhiteboardEditor(
                                 shape = shape.takeIf { tool == WhiteboardTool.SHAPE }, eraserRadius = eraserRadius)
                             // A stroke keeps one transform; navigation takes over for the rest
                             // of this touch sequence as soon as another finger arrives.
-                            val transform = viewport.transform(width, height)
+                            val startingCanvasHeight = boardHeight()
+                            val transform = viewport.transform(width, height, startingCanvasHeight)
                             fun pointAt(position: Offset): WhiteboardPoint {
                                 val point = transform.screenToWorld(position.x, position.y)
                                 return whiteboardPoint(point.x, point.y)
@@ -515,8 +531,10 @@ internal fun WhiteboardEditor(
                                         WhiteboardTool.TEXT -> Unit
                                         WhiteboardTool.CUT -> { cutError = null }
                                         else -> {
-                                            if (shapeDrag != null) shapePreview = shapeDrag.update(downPoint)
-                                            else gesture.begin(downPoint)
+                                            if (shapeDrag != null) {
+                                                shapePreview = shapeDrag.update(downPoint)
+                                                expandCanvas(downPoint.y + lineWidth * 0.71f)
+                                            } else gesture.begin(downPoint)
                                             guidePoint = downPoint
                                             guideAnchor = downPoint.takeIf { tool == WhiteboardTool.SHAPE && shapeDrag == null }
                                             if (erasing) eraserPosition = downPoint
@@ -540,6 +558,7 @@ internal fun WhiteboardEditor(
                                         guidePoint = null
                                         guideAnchor = null
                                         showWorkingBoard()
+                                        expandedCanvasHeight = startingCanvasHeight
                                     }
                                     if (navigating) {
                                         val stablePointers = event.changes.count { it.pressed && it.previousPressed }
@@ -549,11 +568,20 @@ internal fun WhiteboardEditor(
                                             viewport = viewport.applyGesture(
                                                 width, height, centroid.x, centroid.y,
                                                 panX = pan.x, panY = pan.y, zoomChange = event.calculateZoom(),
+                                                canvasHeight = startingCanvasHeight,
                                             )
                                         }
                                     } else if (!strokeStopped) {
                                         val change = event.changes.firstOrNull { it.id == down.id }
-                                        if (change == null || (tool != WhiteboardTool.CUT && !transform.containsScreenPoint(change.position.x, change.position.y))) {
+                                        // A continuous drawing may cross the old bottom between
+                                        // pointer samples. Reveal that space before hit-testing.
+                                        if (change != null && (tool == WhiteboardTool.PEN || tool == WhiteboardTool.SHAPE) &&
+                                            transform.copy(canvasHeight = Whiteboard.CANVAS_HEIGHT)
+                                                .containsScreenPoint(change.position.x, change.position.y)) {
+                                            expandCanvas(pointAt(change.position).y + lineWidth * 0.71f)
+                                        }
+                                        if (change == null || (tool != WhiteboardTool.CUT &&
+                                            !transform.copy(canvasHeight = boardHeight()).containsScreenPoint(change.position.x, change.position.y))) {
                                             // Do not join separated pieces if a finger leaves and re-enters.
                                             strokeStopped = true
                                             eraserPosition = null
@@ -610,7 +638,7 @@ internal fun WhiteboardEditor(
                     },
             ) {
                 if (size.width > 0f && size.height > 0f) {
-                    val transform = viewport.transform(size.width, size.height)
+                    val transform = viewport.transform(size.width, size.height, boardHeight())
                     val origin = Offset(transform.originX, transform.originY)
                     val boardWidth = transform.canvasWidthPx
                     val boardHeight = transform.canvasHeightPx
@@ -623,13 +651,13 @@ internal fun WhiteboardEditor(
                                 val offset = origin + Offset(x * gridStep, 0f)
                                 drawLine(gridColor, offset, offset + Offset(0f, boardHeight), 0.7.dp.toPx())
                             }
-                            for (y in 0..(Whiteboard.CANVAS_HEIGHT / 50f).toInt()) {
+                            for (y in 0..(transform.canvasHeight / 50f).toInt()) {
                                 val offset = origin + Offset(0f, y * gridStep)
                                 drawLine(gridColor, offset, offset + Offset(boardWidth, 0f), 0.7.dp.toPx())
                             }
                         } else {
                             // Dots make navigation visible even with the line guides hidden.
-                            for (x in 0..(Whiteboard.CANVAS_WIDTH / 50f).toInt()) for (y in 0..(Whiteboard.CANVAS_HEIGHT / 50f).toInt()) {
+                            for (x in 0..(Whiteboard.CANVAS_WIDTH / 50f).toInt()) for (y in 0..(transform.canvasHeight / 50f).toInt()) {
                                 drawCircle(Color(0xFFE0E3E7), 0.7.dp.toPx(), origin + Offset(x * gridStep, y * gridStep))
                             }
                         }
@@ -833,7 +861,15 @@ internal fun WhiteboardEditor(
                     limitReached = false
                     shapeBase = null
                     shapePreview = emptyList()
+                    selection = null
+                    cutError = null
+                    compassState.value = WhiteboardInstrumentState()
+                    protractorState.value = WhiteboardInstrumentState()
+                    compassPlaced = false
+                    protractorPlaced = false
                     publish(Whiteboard())
+                    expandedCanvasHeight = Whiteboard.INITIAL_CANVAS_HEIGHT
+                    viewport = WhiteboardViewport()
                 }) { Text("清空", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showClearDialog = false }) { Text("取消") } },
@@ -915,10 +951,11 @@ private fun WhiteboardShapeIcon(shape: WhiteboardShape) {
 @Composable
 internal fun WhiteboardPreview(whiteboard: Whiteboard, modifier: Modifier = Modifier, attachments: List<NoteAttachment> = emptyList()) {
     val imageBitmaps = rememberWhiteboardImages(whiteboard, attachments, 384)
+    val canvasHeight = remember(whiteboard) { whiteboard.canvasHeight }
     Canvas(
         modifier
             .fillMaxWidth()
-            .aspectRatio(Whiteboard.CANVAS_WIDTH / Whiteboard.CANVAS_HEIGHT)
+            .aspectRatio(Whiteboard.CANVAS_WIDTH / canvasHeight)
             .clip(MaterialTheme.shapes.medium)
             .background(Color.White)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)

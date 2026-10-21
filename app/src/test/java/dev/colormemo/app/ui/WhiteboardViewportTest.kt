@@ -7,6 +7,40 @@ import org.junit.Test
 
 class WhiteboardViewportTest {
     @Test
+    fun growingCanvasKeepsScaleAndExistingInkUnderTheSameScreenPoint() {
+        for ((width, height) in listOf(400f to 700f, 700f to 400f)) {
+            for (zoom in listOf(1f, 2f, 4f, 8f, 16f)) {
+                for (extent in listOf(1000f, 1500f, 2500f, 3500f)) {
+                    val camera = WhiteboardViewport(centerY = extent - 100f, zoom = zoom)
+                        .constrained(width, height, extent)
+                    val before = camera.transform(width, height, extent)
+                    val after = camera.transform(width, height, extent + 500f)
+                    val point = before.worldToScreen(500f, extent - 100f)
+                    assertEquals(before.scale, after.scale, EPSILON)
+                    assertPoint(point.x, point.y, after.worldToScreen(500f, extent - 100f))
+                    assertEquals(500f * after.scale, after.canvasHeightPx - before.canvasHeightPx, EPSILON)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun navigationAndHitTestingUseTheCurrentCanvasBottom() {
+        val small = WhiteboardViewport(zoom = 1f).transform(400f, 700f, 1000f)
+        assertEquals(175f, small.canvasHeightPx, EPSILON)
+        assertTrue(small.containsScreenPoint(200f, 175f))
+        assertFalse(small.containsScreenPoint(200f, 176f))
+        assertTrue(small.copy(canvasHeight = 1500f).containsScreenPoint(200f, 200f))
+
+        for (extent in listOf(1000f, 1500f, 4000f)) {
+            val bottom = WhiteboardViewport().applyGesture(
+                400f, 700f, 200f, 350f, panY = -10000f, canvasHeight = extent,
+            ).transform(400f, 700f, extent)
+            assertPoint(200f, 700f, bottom.worldToScreen(500f, extent))
+        }
+    }
+
+    @Test
     fun defaultCameraOpensOnTheOriginalAreaWithMoreSpaceBelow() {
         val transform = WhiteboardViewport().transform(400f, 700f)
 

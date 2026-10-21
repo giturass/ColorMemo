@@ -8,7 +8,7 @@ import dev.colormemo.core.model.WhiteboardRect
 /** Matches the canvas geometry, layered translucent ink and marker caps. */
 internal fun whiteboardSvg(whiteboard: Whiteboard, imageDataUrls: Map<String, String> = emptyMap()): String = buildString {
     val canvasWidth = Whiteboard.CANVAS_WIDTH.toInt()
-    val canvasHeight = Whiteboard.CANVAS_HEIGHT.toInt()
+    val canvasHeight = whiteboard.canvasHeight.toInt()
     append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$canvasWidth\" height=\"$canvasHeight\" viewBox=\"0 0 $canvasWidth $canvasHeight\">\n")
     append("<title>白板</title>\n<rect width=\"$canvasWidth\" height=\"$canvasHeight\" fill=\"#ffffff\"/>\n")
     var maskIndex = 0

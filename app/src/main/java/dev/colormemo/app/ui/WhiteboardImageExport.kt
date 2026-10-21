@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 /** Render the document, independent of the camera, guides, selection and instrument overlays. */
 internal suspend fun saveWhiteboardPng(context: Context, uri: Uri, board: Whiteboard, attachments: List<NoteAttachment>) =
     withContext(Dispatchers.IO) {
-        val bitmap = Bitmap.createBitmap(Whiteboard.CANVAS_WIDTH.toInt(), Whiteboard.CANVAS_HEIGHT.toInt(), Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(Whiteboard.CANVAS_WIDTH.toInt(), board.canvasHeight.toInt(), Bitmap.Config.ARGB_8888)
         try {
             val scope = CanvasDrawScope()
             val canvas = Canvas(bitmap.asImageBitmap())

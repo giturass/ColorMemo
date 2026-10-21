@@ -11,9 +11,9 @@ internal fun WhiteboardImage.placedIn(transform: WhiteboardTransform): Whiteboar
     val topLeft = transform.screenToWorld(0f, 0f)
     val bottomRight = transform.screenToWorld(transform.viewportWidth, transform.viewportHeight)
     val left = topLeft.x.coerceIn(0f, Whiteboard.CANVAS_WIDTH)
-    val top = topLeft.y.coerceIn(0f, Whiteboard.CANVAS_HEIGHT)
+    val top = topLeft.y.coerceIn(0f, transform.canvasHeight)
     val right = bottomRight.x.coerceIn(0f, Whiteboard.CANVAS_WIDTH)
-    val bottom = bottomRight.y.coerceIn(0f, Whiteboard.CANVAS_HEIGHT)
+    val bottom = bottomRight.y.coerceIn(0f, transform.canvasHeight)
     val scale = minOf((right - left) * 0.8f / width, (bottom - top) * 0.8f / height)
     val fittedWidth = width * scale
     val fittedHeight = height * scale

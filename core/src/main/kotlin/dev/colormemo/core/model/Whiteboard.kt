@@ -3,6 +3,7 @@ package dev.colormemo.core.model
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlin.math.ceil
 
 /** Fixed world coordinates keep strokes stable across screen sizes. */
 @OptIn(ExperimentalSerializationApi::class)
@@ -16,9 +17,28 @@ data class Whiteboard(
 ) {
     val hasContent: Boolean get() = strokes.isNotEmpty() || images.isNotEmpty() || texts.isNotEmpty()
 
+    /** Derived from existing layers, so backups and sync need no extra size field. */
+    val canvasHeight: Float get() = heightForContent(maxOf(
+        strokes.maxOfOrNull { stroke ->
+            // Square marker caps can extend diagonally beyond the last point.
+            (stroke.points.maxOfOrNull { it.y } ?: 0f) + stroke.width * 0.71f
+        } ?: 0f,
+        images.maxOfOrNull { it.y + it.height } ?: 0f,
+        texts.maxOfOrNull { it.y + it.height } ?: 0f,
+    ))
+
     companion object {
         const val CANVAS_WIDTH: Float = 1000f
+        const val INITIAL_CANVAS_HEIGHT: Float = 1000f
+        /** Maximum world extent; validation and stored coordinates retain this limit. */
         const val CANVAS_HEIGHT: Float = 4000f
+        private const val HEIGHT_STEP: Float = 500f
+        private const val BOTTOM_SPACE: Float = 200f
+
+        fun heightForContent(bottom: Float): Float =
+            (ceil((bottom + BOTTOM_SPACE) / HEIGHT_STEP) * HEIGHT_STEP)
+                .coerceIn(INITIAL_CANVAS_HEIGHT, CANVAS_HEIGHT)
+
         const val MAX_CUTOUTS_PER_LAYER: Int = 64
         const val MAX_STROKES: Int = 500
         const val MAX_POINTS: Int = 6000

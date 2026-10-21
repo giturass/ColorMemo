@@ -12,14 +12,14 @@ class WhiteboardImagesTest {
 
     @Test
     fun insertsInsideCurrentViewportAtEveryZoomIncludingLowerCanvas() {
-        for (zoom in listOf(1f, 2f, 8f)) for (centerY in listOf(0f, 500f, 1900f)) {
-            val transform = WhiteboardViewport(centerY = centerY, zoom = zoom).transform(400f, 650f)
+        for (extent in listOf(1000f, 1500f, 4000f)) for (zoom in listOf(1f, 2f, 8f)) for (centerY in listOf(0f, 500f, 1900f)) {
+            val transform = WhiteboardViewport(centerY = centerY, zoom = zoom).transform(400f, 650f, extent)
             for (source in listOf(image, image.copy(width = 10f, height = 2000f))) {
                 val placed = source.placedIn(transform)
                 assertEquals(source.width / source.height, placed.width / placed.height, 0.001f)
                 assertTrue(placed.x >= 0f && placed.y >= 0f)
                 assertTrue(placed.x + placed.width <= Whiteboard.CANVAS_WIDTH)
-                assertTrue(placed.y + placed.height <= Whiteboard.CANVAS_HEIGHT)
+                assertTrue(placed.y + placed.height <= extent)
                 val topLeft = transform.worldToScreen(placed.x, placed.y)
                 val bottomRight = transform.worldToScreen(placed.x + placed.width, placed.y + placed.height)
                 assertTrue(transform.containsScreenPoint(topLeft.x, topLeft.y))

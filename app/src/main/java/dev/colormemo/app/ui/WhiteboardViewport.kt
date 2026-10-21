@@ -9,25 +9,28 @@ internal data class WhiteboardViewport(
     val centerY: Float = Whiteboard.CANVAS_WIDTH / 2f,
     val zoom: Float = DEFAULT_ZOOM,
 ) {
-    fun constrained(width: Float, height: Float): WhiteboardViewport {
+    fun constrained(width: Float, height: Float, canvasHeight: Float = Whiteboard.CANVAS_HEIGHT): WhiteboardViewport {
+        require(canvasHeight.isFinite() && canvasHeight in Whiteboard.INITIAL_CANVAS_HEIGHT..Whiteboard.CANVAS_HEIGHT)
         val nextZoom = zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
         val scale = fitScale(width, height) * nextZoom
         return copy(
             centerX = constrainCenter(centerX, width / (2f * scale), Whiteboard.CANVAS_WIDTH),
-            centerY = constrainCenter(centerY, height / (2f * scale), Whiteboard.CANVAS_HEIGHT),
+            centerY = constrainCenter(centerY, height / (2f * scale), canvasHeight),
             zoom = nextZoom,
         )
     }
 
-    fun transform(width: Float, height: Float): WhiteboardTransform {
-        val camera = constrained(width, height)
+    fun transform(width: Float, height: Float, canvasHeight: Float = Whiteboard.CANVAS_HEIGHT): WhiteboardTransform {
+        val camera = constrained(width, height, canvasHeight)
         val scale = fitScale(width, height) * camera.zoom
         return WhiteboardTransform(
             viewportWidth = width,
             viewportHeight = height,
             originX = canvasOrigin(width, camera.centerX, scale, Whiteboard.CANVAS_WIDTH),
-            originY = canvasOrigin(height, camera.centerY, scale, Whiteboard.CANVAS_HEIGHT),
+            // Anchor short boards at the top: growing them must not move existing ink.
+            originY = if (canvasHeight * scale <= height) 0f else canvasOrigin(height, camera.centerY, scale, canvasHeight),
             scale = scale,
+            canvasHeight = canvasHeight,
         )
     }
 
@@ -44,17 +47,18 @@ internal data class WhiteboardViewport(
         panX: Float = 0f,
         panY: Float = 0f,
         zoomChange: Float = 1f,
+        canvasHeight: Float = Whiteboard.CANVAS_HEIGHT,
     ): WhiteboardViewport {
         require(zoomChange.isFinite() && zoomChange > 0f)
-        val camera = constrained(width, height)
-        val anchor = camera.transform(width, height).screenToWorld(centroidX, centroidY)
+        val camera = constrained(width, height, canvasHeight)
+        val anchor = camera.transform(width, height, canvasHeight).screenToWorld(centroidX, centroidY)
         val nextZoom = (camera.zoom * zoomChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
         val nextScale = fitScale(width, height) * nextZoom
         return WhiteboardViewport(
             centerX = anchor.x - (centroidX + panX - width / 2f) / nextScale,
             centerY = anchor.y - (centroidY + panY - height / 2f) / nextScale,
             zoom = nextZoom,
-        ).constrained(width, height)
+        ).constrained(width, height, canvasHeight)
     }
 
     companion object {
@@ -64,6 +68,7 @@ internal data class WhiteboardViewport(
 
         private fun fitScale(width: Float, height: Float): Float {
             require(width.isFinite() && height.isFinite() && width > 0f && height > 0f)
+            // Use the maximum extent as a stable zoom reference, even while a board grows.
             return minOf(width / Whiteboard.CANVAS_WIDTH, height / Whiteboard.CANVAS_HEIGHT)
         }
 
@@ -94,9 +99,10 @@ internal data class WhiteboardTransform(
     val originX: Float,
     val originY: Float,
     val scale: Float,
+    val canvasHeight: Float = Whiteboard.CANVAS_HEIGHT,
 ) {
     val canvasWidthPx: Float get() = Whiteboard.CANVAS_WIDTH * scale
-    val canvasHeightPx: Float get() = Whiteboard.CANVAS_HEIGHT * scale
+    val canvasHeightPx: Float get() = canvasHeight * scale
 
     fun worldToScreen(x: Float, y: Float): WhiteboardViewportPoint =
         WhiteboardViewportPoint(originX + x * scale, originY + y * scale)

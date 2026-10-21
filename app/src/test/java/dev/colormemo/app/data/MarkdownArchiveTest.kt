@@ -53,12 +53,12 @@ class MarkdownArchiveTest {
         val document = factory.newDocumentBuilder().parse(whiteboardSvg(whiteboard).byteInputStream())
         val svg = document.documentElement
         assertEquals("http://www.w3.org/2000/svg", svg.namespaceURI)
-        assertEquals("0 0 1000 4000", svg.getAttribute("viewBox"))
+        assertEquals("0 0 1000 2500", svg.getAttribute("viewBox"))
         assertEquals("1000", svg.getAttribute("width"))
-        assertEquals("4000", svg.getAttribute("height"))
+        assertEquals("2500", svg.getAttribute("height"))
         val background = svg.getElementsByTagName("rect").item(0) as org.w3c.dom.Element
         assertEquals("1000", background.getAttribute("width"))
-        assertEquals("4000", background.getAttribute("height"))
+        assertEquals("2500", background.getAttribute("height"))
         val circle = document.getElementsByTagName("circle").item(0) as Element
         assertEquals("10.5", circle.getAttribute("cx"))
         assertEquals("20.0", circle.getAttribute("cy"))
