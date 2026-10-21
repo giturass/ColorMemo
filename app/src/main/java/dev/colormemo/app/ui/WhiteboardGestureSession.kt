@@ -90,7 +90,7 @@ internal class WhiteboardGestureSession(
         return working
     }
 
-    /** Shapes and compass arcs remain one reversible stroke throughout the gesture. */
+    /** Shapes and instrument drawings remain one reversible stroke throughout the gesture. */
     fun previewStroke(points: List<WhiteboardPoint>): Whiteboard {
         if (isNavigating) return working
         limitReached = points.size >= 2 &&

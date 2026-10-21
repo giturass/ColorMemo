@@ -160,9 +160,15 @@ internal fun WhiteboardEditor(
     var instrument by rememberSaveable { mutableStateOf(WhiteboardInstrument.COMPASS) }
     val compassState = rememberSaveable(stateSaver = InstrumentSaver) { mutableStateOf(WhiteboardInstrumentState()) }
     val protractorState = rememberSaveable(stateSaver = InstrumentSaver) { mutableStateOf(WhiteboardInstrumentState()) }
-    var instrumentState by if (instrument == WhiteboardInstrument.COMPASS) compassState else protractorState
+    val rulerState = rememberSaveable(stateSaver = InstrumentSaver) { mutableStateOf(WhiteboardInstrumentState()) }
+    var instrumentState by when (instrument) {
+        WhiteboardInstrument.COMPASS -> compassState
+        WhiteboardInstrument.PROTRACTOR -> protractorState
+        WhiteboardInstrument.RULER -> rulerState
+    }
     var compassPlaced by rememberSaveable { mutableStateOf(false) }
     var protractorPlaced by rememberSaveable { mutableStateOf(false) }
+    var rulerPlaced by rememberSaveable { mutableStateOf(false) }
     var showGuides by rememberSaveable { mutableStateOf(false) }
     var showTextEditor by rememberSaveable { mutableStateOf(false) }
     var editingTextId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -331,6 +337,9 @@ internal fun WhiteboardEditor(
                                     } else if (template == WhiteboardInstrument.PROTRACTOR && !protractorPlaced) {
                                         protractorState.value = visibleInstrumentState()
                                         protractorPlaced = true
+                                    } else if (template == WhiteboardInstrument.RULER && !rulerPlaced) {
+                                        rulerState.value = visibleInstrumentState()
+                                        rulerPlaced = true
                                     }
                                     instrument = template
                                     tool = WhiteboardTool.INSTRUMENT
@@ -461,9 +470,11 @@ internal fun WhiteboardEditor(
                                 WhiteboardShape.ANGLE -> "白板画布，先拖出第一条线段，再从端点拖出第二条线段成角，双指拖动和缩放"
                                 else -> "白板画布，单指拖动绘制${shape.displayName}，双指拖动和缩放"
                             }
-                            tool == WhiteboardTool.INSTRUMENT -> if (instrument == WhiteboardInstrument.COMPASS)
-                                "白板画布，拖动圆规笔尖画弧，拖动圆心移动，双指拖动和缩放"
-                                else "白板画布，调节${instrument.displayName}，双指拖动和缩放"
+                            tool == WhiteboardTool.INSTRUMENT -> when (instrument) {
+                                WhiteboardInstrument.COMPASS -> "白板画布，拖动圆规笔尖画弧，拖动圆心移动，双指拖动和缩放"
+                                WhiteboardInstrument.PROTRACTOR -> "白板画布，调节量角器，双指拖动和缩放"
+                                WhiteboardInstrument.RULER -> "白板画布，拖动尺身移动直尺，右侧圆点旋转，沿蓝色刻度边拖动画直线，双指拖动和缩放"
+                            }
                             tool == WhiteboardTool.TEXT -> "白板画布，轻点插入或编辑文字，拖动文字移动，双指拖动和缩放"
                             erasing -> "白板画布，单指擦除，双指拖动和缩放"
                             else -> "白板画布，单指绘画或擦除，双指拖动和缩放"
@@ -865,8 +876,10 @@ internal fun WhiteboardEditor(
                     cutError = null
                     compassState.value = WhiteboardInstrumentState()
                     protractorState.value = WhiteboardInstrumentState()
+                    rulerState.value = WhiteboardInstrumentState()
                     compassPlaced = false
                     protractorPlaced = false
+                    rulerPlaced = false
                     publish(Whiteboard())
                     expandedCanvasHeight = Whiteboard.INITIAL_CANVAS_HEIGHT
                     viewport = WhiteboardViewport()

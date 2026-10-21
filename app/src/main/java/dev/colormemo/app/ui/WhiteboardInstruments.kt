@@ -12,12 +12,13 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 internal const val MIN_INSTRUMENT_RADIUS = 24f
+internal const val RULER_LENGTH_FACTOR = 1.8f
 
 internal enum class WhiteboardInstrument(val displayName: String) {
-    COMPASS("圆规"), PROTRACTOR("量角器"),
+    COMPASS("圆规"), PROTRACTOR("量角器"), RULER("直尺"),
 }
 
-internal enum class InstrumentHandle { CENTER, PEN, BASELINE, MEASUREMENT }
+internal enum class InstrumentHandle { CENTER, PEN, BASELINE, MEASUREMENT, RULER_ROTATION }
 
 /** Temporary guides use world coordinates but never become part of a saved board. */
 internal data class WhiteboardInstrumentState(
@@ -30,6 +31,9 @@ internal data class WhiteboardInstrumentState(
     val center: WhiteboardPoint get() = WhiteboardPoint(centerX, centerY)
     val maximumRadius: Float get() = minOf(centerX, Whiteboard.CANVAS_WIDTH - centerX,
         centerY, Whiteboard.CANVAS_HEIGHT - centerY)
+    // All four ruler corners fit inside the shared guide radius at any rotation.
+    val rulerLength: Float get() = radius * RULER_LENGTH_FACTOR
+    val rulerHalfWidth: Float get() = radius * 0.3f
 
     fun constrained(): WhiteboardInstrumentState {
         val size = radius.coerceIn(MIN_INSTRUMENT_RADIUS, Whiteboard.CANVAS_WIDTH / 2f)
@@ -45,11 +49,34 @@ internal data class WhiteboardInstrumentState(
         return WhiteboardPoint(centerX + cos(angle).toFloat() * distance, centerY - sin(angle).toFloat() * distance)
     }
 
+    /** Distance along the marked edge, and depth into the body, in board units. */
+    fun rulerPoint(distance: Float, depth: Float = 0f): WhiteboardPoint {
+        val angle = baselineDegrees * PI / 180.0
+        val along = distance - rulerLength / 2f
+        val across = depth - rulerHalfWidth
+        return WhiteboardPoint(centerX + cos(angle).toFloat() * along + sin(angle).toFloat() * across,
+            centerY - sin(angle).toFloat() * along + cos(angle).toFloat() * across)
+    }
+
+    fun rulerDistanceAt(point: WhiteboardPoint): Float {
+        val angle = baselineDegrees * PI / 180.0
+        return (point.x - centerX) * cos(angle).toFloat() - (point.y - centerY) * sin(angle).toFloat() + rulerLength / 2f
+    }
+
+    fun isNearRulerEdge(point: WhiteboardPoint, touchRadius: Float): Boolean {
+        val angle = baselineDegrees * PI / 180.0
+        val depth = (point.x - centerX) * sin(angle).toFloat() + (point.y - centerY) * cos(angle).toFloat() + rulerHalfWidth
+        // Keep the drawing edge separate from the move/rotation handles on small rulers.
+        val tolerance = minOf(touchRadius, rulerHalfWidth * 0.45f)
+        return abs(depth) <= tolerance && rulerDistanceAt(point) in -tolerance..(rulerLength + tolerance)
+    }
+
     fun handlePoint(handle: InstrumentHandle): WhiteboardPoint = when (handle) {
         InstrumentHandle.CENTER -> center
         InstrumentHandle.PEN -> pointAt(baselineDegrees)
         InstrumentHandle.BASELINE -> pointAt(baselineDegrees - 90f, radius * 0.4f)
         InstrumentHandle.MEASUREMENT -> pointAt(baselineDegrees + angleDegrees)
+        InstrumentHandle.RULER_ROTATION -> rulerPoint(rulerLength * 0.85f, rulerHalfWidth)
     }
 
     fun drawingPoints(instrument: WhiteboardInstrument): List<WhiteboardPoint> = when (instrument) {
@@ -59,6 +86,7 @@ internal data class WhiteboardInstrumentState(
             listOf(handlePoint(InstrumentHandle.MEASUREMENT), center, pointAt(baselineDegrees)) +
                 arcPoints(baselineDegrees, angleDegrees, angleRadius, 32)
         }
+        WhiteboardInstrument.RULER -> listOf(rulerPoint(0f), rulerPoint(rulerLength))
     }.map { whiteboardPoint(it.x, it.y) }
 
 }
@@ -82,9 +110,11 @@ internal class WhiteboardInstrumentDrag(
     start: WhiteboardPoint,
     touchRadius: Float,
 ) {
-    private val handles = if (instrument == WhiteboardInstrument.COMPASS) {
-        listOf(InstrumentHandle.CENTER, InstrumentHandle.PEN)
-    } else listOf(InstrumentHandle.CENTER, InstrumentHandle.MEASUREMENT, InstrumentHandle.BASELINE)
+    private val handles = when (instrument) {
+        WhiteboardInstrument.COMPASS -> listOf(InstrumentHandle.CENTER, InstrumentHandle.PEN)
+        WhiteboardInstrument.PROTRACTOR -> listOf(InstrumentHandle.CENTER, InstrumentHandle.MEASUREMENT, InstrumentHandle.BASELINE)
+        WhiteboardInstrument.RULER -> listOf(InstrumentHandle.CENTER, InstrumentHandle.RULER_ROTATION)
+    }
     private val hit = handles.minBy { distanceSquared(before.handlePoint(it), start) }
         .takeIf { distanceSquared(before.handlePoint(it), start) <= touchRadius * touchRadius }
     private val handle = hit ?: InstrumentHandle.CENTER
@@ -95,10 +125,22 @@ internal class WhiteboardInstrumentDrag(
     private var pointerDegrees = degreesAt(start)
     private var penDegrees = before.baselineDegrees
     private var tracedPoints = emptyList<WhiteboardPoint>()
+    private val tracingRuler = instrument == WhiteboardInstrument.RULER && before.isNearRulerEdge(start, touchRadius)
+    private var rulerStart = before.rulerDistanceAt(start).coerceIn(0f, before.rulerLength)
+    private var rulerEnd = rulerStart
     val drawingPoints: List<WhiteboardPoint> get() = tracedPoints
 
     fun update(point: WhiteboardPoint): WhiteboardInstrumentState {
         if (navigating) return before
+        if (tracingRuler) {
+            val distance = before.rulerDistanceAt(point).coerceIn(0f, before.rulerLength)
+            // Preserve the whole traced extent when the finger reverses direction.
+            rulerStart = minOf(rulerStart, distance)
+            rulerEnd = maxOf(rulerEnd, distance)
+            tracedPoints = if (rulerEnd - rulerStart < 1f) emptyList() else
+                listOf(before.rulerPoint(rulerStart), before.rulerPoint(rulerEnd)).map { whiteboardPoint(it.x, it.y) }
+            return before
+        }
         val degrees = degreesAt(point)
         return when (handle) {
             InstrumentHandle.CENTER -> before.copy(centerX = point.x + grabOffset.x, centerY = point.y + grabOffset.y).constrained()
@@ -130,6 +172,12 @@ internal class WhiteboardInstrumentDrag(
             InstrumentHandle.MEASUREMENT -> {
                 val delta = normalizedDegrees(degrees - before.baselineDegrees)
                 before.copy(angleDegrees = if (delta <= 180f) delta else if (delta > 270f) 0f else 180f)
+            }
+            InstrumentHandle.RULER_ROTATION -> {
+                if (distanceSquared(before.center, point) >= MIN_INSTRUMENT_RADIUS * MIN_INSTRUMENT_RADIUS / 4f) {
+                    penDegrees = normalizedDegrees(before.baselineDegrees + degrees - pointerDegrees)
+                }
+                before.copy(baselineDegrees = penDegrees)
             }
         }
     }
