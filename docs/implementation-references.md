@@ -2,6 +2,11 @@
 
 以下官方文档在开发时实际查询，用于核对接口与约束。依赖版本在 Gradle 配置中固定；此处链接不代表依赖自动跟随最新版。
 
+2026-10-22 回收站交互修复复核：
+
+- [Compose 滑动删除](https://developer.android.com/develop/ui/compose/touch-input/user-interactions/swipe-to-dismiss) 与 [Material3 1.3.2 官方源码](https://dl.google.com/dl/android/maven2/androidx/compose/material3/material3/1.3.2/material3-1.3.2-sources.jar)：滑动锚点依赖卡片布局；回收站及多选使用普通卡片，不创建滑动状态或启动复位动画。有效左滑完成后通过 `snapTo(Settled)` 清除保存的滑出状态，再移入回收站。
+- [Compose 状态与保存](https://developer.android.com/develop/ui/compose/state)：滑动状态会随惰性列表条目保存；使用以状态实例为键的 effect 观察变化，避免复位过程中因当前值变化取消同一次删除操作。恢复保留既有分类和排序时间，仍创建带祖先关系的新修订，不新增同步字段。
+
 2026-10-21 Mermaid 与公式预览复核：
 
 - [Android 本地 WebView 内容](https://developer.android.com/develop/ui/views/layout/webapps/load-local-content)：使用 HTTPS 本地源及 `shouldInterceptRequest` 提供打包资源；关闭文件、content URI、网络加载及混合内容。脚本只来自本地资产，图片通过既有大小限制、EXIF 解码和 HTTPS 下载器按正文引用提供。

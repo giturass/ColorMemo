@@ -36,15 +36,19 @@ data class Note(
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val attachments: List<NoteAttachment> = emptyList(),
 ) {
-    /** Call after copy(...), using the revision of the note on which the edit was based. */
+    /**
+     * Call after copy(...), using the revision of the note on which the edit was based.
+     * Trash and restore preserve [updatedAt] so they keep the note's position in its list.
+     */
     fun edited(
         deviceId: String,
         now: Long = System.currentTimeMillis(),
         newRevision: String = UUID.randomUUID().toString(),
+        preserveUpdatedAt: Boolean = false,
     ): Note {
         require(newRevision.isNotBlank() && newRevision != revision && newRevision !in ancestorRevisions)
         require(deviceId.isNotBlank())
-        val editedAt = maxOf(now, updatedAt + 1)
+        val editedAt = if (preserveUpdatedAt) updatedAt else maxOf(now, updatedAt + 1)
         return copy(
             title = if (isPurged) "" else title,
             content = if (isPurged) "" else content,

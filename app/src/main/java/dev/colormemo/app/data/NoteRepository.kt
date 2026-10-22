@@ -72,11 +72,13 @@ class NoteRepository internal constructor(
 
     suspend fun setArchived(id: String, archived: Boolean) = mutate(id) { it.copy(isArchived = archived) }
 
-    suspend fun trash(id: String) = mutate(id) { it.copy(deletedAt = System.currentTimeMillis()) }
+    suspend fun trash(id: String) = mutate(id, preserveUpdatedAt = true) {
+        if (it.deletedAt == null) it.copy(deletedAt = System.currentTimeMillis()) else it
+    }
 
-    suspend fun restore(id: String) = mutate(id) {
+    suspend fun restore(id: String) = mutate(id, preserveUpdatedAt = true) {
         require(!it.isPurged) { "已永久删除的笔记不能恢复" }
-        it.copy(deletedAt = null, isArchived = false)
+        it.copy(deletedAt = null)
     }
 
     suspend fun purge(id: String) = mutate(id) {
@@ -99,12 +101,18 @@ class NoteRepository internal constructor(
         writeMutex.withLock { mergeInTransaction(incoming).also { onCommitted() } }
     }
 
-    private suspend fun mutate(id: String, transform: (Note) -> Note) = withContext(Dispatchers.IO) {
+    private suspend fun mutate(
+        id: String,
+        preserveUpdatedAt: Boolean = false,
+        transform: (Note) -> Note,
+    ) = withContext(Dispatchers.IO) {
         writeMutex.withLock {
             database.runInTransaction {
                 val current = dao.find(id)?.let(::decode) ?: return@runInTransaction
                 val changed = transform(current)
-                if (changed != current) dao.upsert(listOf(encode(changed.edited(deviceId))))
+                if (changed != current) {
+                    dao.upsert(listOf(encode(changed.edited(deviceId, preserveUpdatedAt = preserveUpdatedAt))))
+                }
             }
             onCommitted()
         }
