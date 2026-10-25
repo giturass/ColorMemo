@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.ViewAgenda
@@ -113,6 +114,7 @@ internal fun MemoDrawer(
     notes: List<Note>,
     onSelect: (MemoSection) -> Unit,
     onSettings: () -> Unit,
+    onAiSettings: () -> Unit,
 ) {
     ModalDrawerSheet(modifier = Modifier.width(304.dp)) {
         Row(
@@ -143,6 +145,13 @@ internal fun MemoDrawer(
             onClick = onSettings,
             label = { Text("设置") },
             icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+        NavigationDrawerItem(
+            selected = false,
+            onClick = onAiSettings,
+            label = { Text("本地 AI 服务") },
+            icon = { Icon(Icons.Outlined.SmartToy, contentDescription = null) },
             modifier = Modifier.padding(horizontal = 12.dp),
         )
     }

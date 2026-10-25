@@ -42,6 +42,8 @@ import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Palette
@@ -192,6 +194,10 @@ internal fun NoteEditorScreen(
     var showWhiteboardDetails by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    var newAiVisible by rememberSaveable { mutableStateOf(false) }
+    var changingAiVisibility by remember { mutableStateOf(false) }
+    var showAiVisibility by remember { mutableStateOf(false) }
+    val aiVisible = if (note == null) newAiVisible else note.id in state.aiVisibleNoteIds
     var imageExportPending by rememberSaveable { mutableStateOf(false) }
     var exportingImage by remember { mutableStateOf(false) }
     var exportNotice by remember { mutableStateOf<String?>(null) }
@@ -202,9 +208,9 @@ internal fun NoteEditorScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val readOnly = note?.deletedAt != null
-    val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null, whiteboard, retainedAttachments)
+    val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null, whiteboard, retainedAttachments, newAiVisible)
     val initialFingerprint = rememberSaveable { draft.fingerprint() }
-    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, retainedAttachments) { draft.fingerprint() }
+    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, retainedAttachments, newAiVisible) { draft.fingerprint() }
     val dirty = fingerprint != initialFingerprint
     val canSave = !saving && !importingImage && !imageExportPending && !exportingImage && pendingWhiteboardImage == null && (title.isNotBlank() || content.text.isNotBlank() || retainedAttachments.isNotEmpty() ||
         whiteboard?.hasContent == true || (whiteboard != null && note != null)) &&
@@ -376,11 +382,12 @@ internal fun NoteEditorScreen(
                 Column {
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                     if (readOnly) {
-                        Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                            TextButton(onClick = { showDeleteDialog = true }, modifier = Modifier.align(Alignment.CenterStart)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { showDeleteDialog = true }) {
                                 Text("彻底删除", color = MaterialTheme.colorScheme.error)
                             }
-                            Box(Modifier.align(Alignment.Center)) {
+                            Spacer(Modifier.weight(1f))
+                            Box {
                                 IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "更多操作") }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                     ModifiedTimeLabel(note)
@@ -389,7 +396,9 @@ internal fun NoteEditorScreen(
                                         leadingIcon = { Icon(Icons.Outlined.SaveAlt, null) }, enabled = canExportImage, onClick = exportImage)
                                 }
                             }
-                            TextButton(onClick = { callbacks.onRestore(note.id); onClose() }, modifier = Modifier.align(Alignment.CenterEnd)) { Text("恢复便签") }
+                            AiVisibilityButton(aiVisible, state.aiAccessLoaded && !changingAiVisibility) { showAiVisibility = true }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { callbacks.onRestore(note.id); onClose() }) { Text("恢复便签") }
                         }
                     } else {
                         if (showPalette) {
@@ -411,8 +420,8 @@ internal fun NoteEditorScreen(
                                 MarkdownAction(Icons.Outlined.Code, "插入代码块", saving || importingImage) { content = content.insert("```\n", "\n```", "代码", block = true); focusRequester.requestFocus() }
                             }
                         }
-                        Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                            Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconToggleButton(checked = showPalette, onCheckedChange = { showPalette = it }, enabled = !saving) { Icon(Icons.Outlined.Palette, "选择卡片颜色") }
                                 Box {
                                     IconButton(onClick = {
@@ -439,13 +448,15 @@ internal fun NoteEditorScreen(
                                             onClick = { imageSourceMenu = false; showRemoteImage = true })
                                     }
                                 }
-                                IconButton(onClick = { showReminder = true }, enabled = !saving) { Icon(Icons.Outlined.NotificationsNone, "设置提醒") }
                             }
-                            Box(Modifier.align(Alignment.Center)) {
+                            Spacer(Modifier.weight(1f))
+                            Box {
                                 IconButton(onClick = { menuOpen = true }, enabled = !saving) { Icon(Icons.Outlined.MoreVert, "更多操作") }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                     ModifiedTimeLabel(note)
                                     HorizontalDivider()
+                                    DropdownMenuItem(text = { Text("设置提醒") }, leadingIcon = { Icon(Icons.Outlined.NotificationsNone, null) },
+                                        onClick = { menuOpen = false; showReminder = true })
                                     if (whiteboard != null) DropdownMenuItem(text = { Text("保存为图片（PNG）") },
                                         leadingIcon = { Icon(Icons.Outlined.SaveAlt, null) }, enabled = canExportImage, onClick = exportImage)
                                     DropdownMenuItem(text = { Text(if (archived) "取消归档" else "归档") }, leadingIcon = { Icon(if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null) }, onClick = { menuOpen = false; archived = !archived })
@@ -455,7 +466,9 @@ internal fun NoteEditorScreen(
                                     DropdownMenuItem(text = { Text(if (whiteboard != null) "白板帮助" else "Markdown 帮助") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.HelpOutline, null) }, onClick = { menuOpen = false; showHelp = true })
                                 }
                             }
-                            Box(Modifier.align(Alignment.CenterEnd)) {
+                            AiVisibilityButton(aiVisible, state.aiAccessLoaded && !saving && !changingAiVisibility) { showAiVisibility = true }
+                            Spacer(Modifier.weight(1f))
+                            Box {
                                 if (whiteboard != null) {
                                     TextButton(onClick = { showWhiteboardDetails = true }, enabled = !saving) { Text("标题与说明") }
                                 } else {
@@ -712,6 +725,43 @@ internal fun NoteEditorScreen(
             confirmButton = { TextButton(onClick = { showHelp = false }) { Text("知道了") } },
         )
     }
+
+    if (showAiVisibility) {
+        AlertDialog(
+            onDismissRequest = { if (!changingAiVisibility) showAiVisibility = false },
+            title = { Text(if (aiVisible) "AI 可见" else "AI 不可见") },
+            text = { Text(if (note == null) "新笔记保存后，只有标记为 AI 可见时，本机 AI 才能读取、修改和管理它。授权仅保存在当前设备。"
+                else "此设置立即生效，与正文保存无关。AI 不可见时，本机 AI 无权搜索、读取、修改或管理此笔记。已经发送给 AI 的内容无法撤回。授权仅保存在当前设备。") },
+            confirmButton = {
+                TextButton(enabled = !changingAiVisibility, onClick = {
+                    if (note == null) {
+                        newAiVisible = !aiVisible
+                        showAiVisibility = false
+                    } else {
+                        val visible = !aiVisible
+                        changingAiVisibility = true
+                        scope.launch {
+                            try { if (callbacks.onSetAiVisible(note.id, visible)) showAiVisibility = false }
+                            finally { changingAiVisibility = false }
+                        }
+                    }
+                }) { Text(if (aiVisible) "设为 AI 不可见" else "允许 AI 访问") }
+            },
+            dismissButton = { TextButton(enabled = !changingAiVisibility, onClick = { showAiVisibility = false }) { Text("取消") } },
+        )
+    }
+}
+
+@Composable
+private fun AiVisibilityButton(visible: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(if (visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                if (visible) "AI 可见，点击管理权限" else "AI 不可见，点击管理权限", Modifier.size(20.dp),
+                tint = if (visible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("AI", style = MaterialTheme.typography.labelSmall)
+        }
+    }
 }
 
 @Composable
@@ -808,7 +858,7 @@ private fun EditorNotice(message: String, isError: Boolean = false) {
 }
 
 private fun NoteDraft.fingerprint(): String {
-    val text = listOf(title, content, color.name, isPinned.toString(), isArchived.toString(), reminderAt.toString(),
+    val text = listOf(title, content, color.name, isPinned.toString(), isArchived.toString(), reminderAt.toString(), newAiVisible.toString(),
         whiteboard?.let { SyncJson.json.encodeToString(it) }.orEmpty(),
         SyncJson.json.encodeToString(attachments.map { it.copy(dataBase64 = "") }))
         .joinToString("") { "${it.length}:$it" }

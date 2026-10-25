@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private enum class MemoScreen { NOTES, EDITOR, SETTINGS }
+private enum class MemoScreen { NOTES, EDITOR, SETTINGS, AI_SETTINGS }
 
 internal enum class MemoSection(val label: String) {
     NOTES("便签"), WHITEBOARDS("白板"), REMINDERS("提醒"), ARCHIVE("归档"), TRASH("回收站")
@@ -100,6 +100,10 @@ fun ColorMemoApp(
                         screen = MemoScreen.SETTINGS
                         scope.launch { drawerState.close() }
                     },
+                    onAiSettings = {
+                        screen = MemoScreen.AI_SETTINGS
+                        scope.launch { drawerState.close() }
+                    },
                 )
             },
         ) {
@@ -126,6 +130,7 @@ fun ColorMemoApp(
                     callbacks = callbacks,
                     onBack = { screen = MemoScreen.NOTES },
                 )
+                MemoScreen.AI_SETTINGS -> AiSettingsScreen(state, callbacks, onBack = { screen = MemoScreen.NOTES })
             }
         }
         SnackbarHost(

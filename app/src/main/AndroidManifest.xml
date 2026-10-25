@@ -6,6 +6,8 @@
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
   <application
       android:name=".ColorMemoApplication"
@@ -36,6 +38,15 @@
       </intent-filter>
     </activity>
     <receiver android:name=".reminder.ReminderReceiver" android:exported="false" />
+    <service
+        android:name=".mcp.AiMcpService"
+        android:exported="false"
+        android:stopWithTask="true"
+        android:foregroundServiceType="specialUse">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="User-started loopback-only authenticated MCP server for user-authorized notes; ongoing notification with stop action; no automatic restart." />
+    </service>
     <receiver android:name=".reminder.ReminderRescheduleReceiver" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED" />

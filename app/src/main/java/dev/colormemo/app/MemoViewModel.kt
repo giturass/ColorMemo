@@ -30,6 +30,23 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
     init {
         refreshPermissions()
         viewModelScope.launch {
+            try {
+                graph.repository.aiVisibleIds.collect { ids ->
+                    mutableState.update { it.copy(aiVisibleNoteIds = ids, aiAccessLoaded = true) }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                graph.ai.stop()
+                mutableState.update { it.copy(aiVisibleNoteIds = emptySet(), aiAccessLoaded = false, message = "无法读取 AI 权限，服务已停止") }
+            }
+        }
+        viewModelScope.launch {
+            graph.ai.status.collect { status ->
+                mutableState.update { it.copy(aiServiceRunning = status.running, aiServiceStarting = status.starting) }
+                status.error?.let(::showMessage)
+            }
+        }
+        viewModelScope.launch {
             graph.ready.await()
             try {
                 graph.repository.notes.collect { notes ->
@@ -72,6 +89,22 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
     fun trash(id: String) = edit { graph.repository.trash(id) }
     fun restore(id: String) = edit { graph.repository.restore(id) }
     fun deleteForever(id: String) = edit { graph.repository.purge(id) }
+
+    suspend fun setAiVisible(id: String, visible: Boolean): Boolean = try {
+        graph.repository.setAiVisible(id, visible)
+        mutableState.update { it.copy(aiVisibleNoteIds = if (visible) it.aiVisibleNoteIds + id else it.aiVisibleNoteIds - id) }
+        showMessage(if (visible) "本机 AI 可读取和管理此笔记" else "已对本机 AI 隐藏，立即生效")
+        true
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { showMessage("AI 权限未更改，请重试"); false }
+
+    fun startAiService() {
+        if (state.value.aiAccessLoaded) graph.ai.start() else showMessage("请等待本地 AI 权限加载完成")
+    }
+    fun stopAiService() = graph.ai.stop()
+    fun copyAiToken() {
+        showMessage(if (graph.ai.copyToken()) "访问令牌已复制，仅交给可信的本机 AI 客户端" else "请先开启本地 AI 服务")
+    }
 
     private fun edit(block: suspend () -> Unit) {
         viewModelScope.launch {

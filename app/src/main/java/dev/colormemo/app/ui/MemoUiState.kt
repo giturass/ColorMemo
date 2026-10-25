@@ -17,6 +17,10 @@ data class MemoUiState(
     val exactAlarmAllowed: Boolean = true,
     val message: String? = null,
     val requestedNoteId: String? = null,
+    val aiVisibleNoteIds: Set<String> = emptySet(),
+    val aiAccessLoaded: Boolean = false,
+    val aiServiceRunning: Boolean = false,
+    val aiServiceStarting: Boolean = false,
 )
 
 /** Keep the opening snapshot so a save can preserve edits made by another device. */
@@ -31,6 +35,7 @@ data class NoteDraft(
     val newNoteId: String? = null,
     val whiteboard: Whiteboard? = null,
     val attachments: List<NoteAttachment> = emptyList(),
+    val newAiVisible: Boolean = false,
 ) {
     val id: String? get() = baseNote?.id ?: newNoteId
 }
@@ -81,4 +86,8 @@ data class MemoCallbacks(
     val onExportNotes: (() -> Unit)? = null,
     val onImportNotes: (() -> Unit)? = null,
     val onExportMarkdown: (() -> Unit)? = null,
+    val onSetAiVisible: suspend (String, Boolean) -> Boolean = { _, _ -> false },
+    val onStartAiService: () -> Unit = {},
+    val onStopAiService: () -> Unit = {},
+    val onCopyAiToken: () -> Unit = {},
 )

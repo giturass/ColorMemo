@@ -1,6 +1,7 @@
 package dev.colormemo.app
 
 import android.app.Application
+import dev.colormemo.app.mcp.AiServiceController
 import dev.colormemo.app.data.NoteDatabase
 import dev.colormemo.app.data.NoteRepository
 import dev.colormemo.app.data.SecureSettingsStore
@@ -38,6 +39,7 @@ class ColorMemoApplication : Application(), ReminderDependencies.Provider {
 class AppGraph(application: ColorMemoApplication) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val database = NoteDatabase.open(application)
+    val ai = AiServiceController(application)
     val settings = SecureSettingsStore(application)
     val reminders = ReminderScheduler(application)
     val repository = NoteRepository(database, settings.deviceId, attachmentStore(application), ::reconcileReminders)
