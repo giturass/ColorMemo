@@ -298,11 +298,6 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text(
-                        "保存设置后，下一次成功同步才会将便签以密文上传。本机数据库和手动导出的备份仍是明文。旧版明文云端数据不受支持，请使用新的空目录或对象前缀。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     HorizontalDivider()
                     SettingsToggle("自动同步", "修改后同步，并定期检查其他设备的更新", draft.automaticSync, { draft = draft.copy(automaticSync = it) })
                     if (draft.automaticSync) {
