@@ -41,6 +41,7 @@ class LocalMcpServer(
     private val deadlines = ScheduledThreadPoolExecutor(1) { runnable ->
         Thread(runnable, "colormemo-mcp-timeouts").apply { isDaemon = true }
     }.apply { removeOnCancelPolicy = true }
+    private val listenerThread = Thread(::acceptConnections, "colormemo-mcp-listener").apply { isDaemon = true }
     val port: Int get() = listener.localPort
 
     init {
@@ -57,36 +58,38 @@ class LocalMcpServer(
 
     fun start() {
         check(!listener.isClosed && active.compareAndSet(false, true))
-        Thread({
-            while (active.get()) {
-                val socket = try { listener.accept() } catch (_: Exception) { break }
-                if (sockets.size >= 8) { socket.close(); continue }
-                sockets.add(socket)
-                val requestJob = Job()
-                var deadline: ScheduledFuture<*>? = null
-                try {
-                    // Covers slow headers, bodies AND clients that stop reading responses.
-                    deadline = deadlines.schedule({
-                        requestJob.cancel()
-                        runCatching { socket.close() }
-                    }, requestTimeoutMillis, TimeUnit.MILLISECONDS)
-                    workers.execute {
-                        try { socket.use { serve(it, requestJob) } } catch (_: Exception) {
-                            // Never log request bodies, credentials, note IDs, titles or errors with data.
-                        } finally {
-                            deadline?.cancel(false)
-                            requestJob.cancel()
-                            sockets.remove(socket)
-                        }
-                    }
-                } catch (_: RejectedExecutionException) {
-                    deadline?.cancel(false)
+        listenerThread.start()
+    }
+
+    private fun acceptConnections() {
+        while (active.get()) {
+            val socket = try { listener.accept() } catch (_: Exception) { break }
+            if (sockets.size >= 8) { socket.close(); continue }
+            sockets.add(socket)
+            val requestJob = Job()
+            var deadline: ScheduledFuture<*>? = null
+            try {
+                // Covers slow headers, bodies AND clients that stop reading responses.
+                deadline = deadlines.schedule({
                     requestJob.cancel()
-                    sockets.remove(socket)
-                    socket.close()
+                    runCatching { socket.close() }
+                }, requestTimeoutMillis, TimeUnit.MILLISECONDS)
+                workers.execute {
+                    try { socket.use { serve(it, requestJob) } } catch (_: Exception) {
+                        // Never log request bodies, credentials, note IDs, titles or errors with data.
+                    } finally {
+                        deadline?.cancel(false)
+                        requestJob.cancel()
+                        sockets.remove(socket)
+                    }
                 }
+            } catch (_: RejectedExecutionException) {
+                deadline?.cancel(false)
+                requestJob.cancel()
+                sockets.remove(socket)
+                socket.close()
             }
-        }, "colormemo-mcp-listener").apply { isDaemon = true }.start()
+        }
     }
 
     private fun serve(socket: Socket, requestJob: Job) {
@@ -177,6 +180,12 @@ class LocalMcpServer(
     override fun close() {
         active.set(false)
         runCatching { listener.close() }
+        // close() wakes accept(), but the native listener can remain bound until that thread exits.
+        // Drain it before returning so an immediate restart cannot race the old listener or sockets.
+        if (Thread.currentThread() != listenerThread) {
+            try { listenerThread.join() }
+            catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+        }
         sockets.forEach { runCatching { it.close() } }
         sockets.clear()
         workers.shutdownNow()

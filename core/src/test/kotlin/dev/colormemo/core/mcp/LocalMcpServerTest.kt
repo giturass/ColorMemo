@@ -69,7 +69,8 @@ class LocalMcpServerTest {
         val token = first.token
         first.close()
         assertThrows(java.io.IOException::class.java) { Socket("127.0.0.1", port).close() }
-        server { next, _ ->
+        LocalMcpServer(McpProtocol { JsonNull }, port).use { next ->
+            next.start()
             assertNotEquals(token, next.token)
             assertEquals(401, send(next, token = token).status)
         }
