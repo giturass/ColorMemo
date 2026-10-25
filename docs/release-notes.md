@@ -1,15 +1,19 @@
-# 彩笺 · ColorMemo 0.2.20
+# 彩笺 · ColorMemo 0.3.0
 
 支持 Android 8.0 及以上版本，可覆盖安装旧版本升级。
 
-- 「设置提醒」从编辑页底部三点菜单移出，以铃铛图标放在插入图片按钮右侧，便签和白板均可直接设置。
-- 缩小「AI」可见性按钮的眼睛图标和文字，调整显示比例；保留图标与文字，不添加方框或背景。
+- 编辑便签和白板时自动保存本机草稿，重新打开应用可恢复最后成功落盘的未完成编辑，包含文字、白板与附件；正式保存或放弃后清除对应草稿。
+- 编辑页右上角改用保存图标，去掉对号和「保存」文字，保存时显示进度。
+- 侧栏入口改名为「MCP服务器」并放在「设置」上方，精简服务页面，增加使用说明与客户端配置链接。
+- MCP 访问令牌加密保存在本机，重启服务、应用或设备后复用；停止服务后可手动重置。升级后首次开启需配置一次新令牌，之后无需因重启而更换。
 
-配置步骤和权限范围见 [本地 AI 笔记服务](https://github.com/giturass/ColorMemo/blob/v0.2.20/docs/ai-mcp.md)。白板暂支持读取、修改标题与说明和管理，不支持通过 MCP 绘制或传输附件文件。
+草稿仅保存在当前设备，不进入同步、导出备份或 MCP 接口；异常退出可恢复的范围以最后成功写入的草稿为准。详情见 [草稿恢复](https://github.com/giturass/ColorMemo/blob/v0.3.0/docs/editor-recovery.md)。
+
+配置步骤和权限范围见 [MCP服务器](https://github.com/giturass/ColorMemo/blob/v0.3.0/docs/ai-mcp.md)。白板暂支持读取、修改标题与说明和管理，不支持通过 MCP 绘制或传输附件文件。
 
 升级后，已有恢复密钥继续用于同步，设置页不再提供显示、复制、生成或更换入口。在新设备配置时，请使用首次配置时保存在应用外的密钥备份。
 
-下载 `ColorMemo-v0.2.20.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
+下载 `ColorMemo-v0.3.0.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
 签名证书 SHA-256：
 

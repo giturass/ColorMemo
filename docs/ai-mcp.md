@@ -1,8 +1,10 @@
-# 本地 AI 笔记服务
+# MCP服务器
 
-彩笺可作为 Codex 等本机 AI agent 的 MCP server。打开侧栏「本地 AI 服务」，开启服务，复制本次访问令牌。地址固定为 `http://127.0.0.1:39451/mcp`，只允许当前设备上的客户端连接。
+彩笺可作为 Codex 等本机 AI agent 的 MCP server。打开侧栏「设置」上方的「MCP服务器」，开启服务，复制访问令牌。页面底部的「使用说明与客户端配置」链接可打开本文档。地址固定为 `http://127.0.0.1:39451/mcp`，只允许当前设备上的客户端连接。
 
-服务默认关闭，仅由应用前台的用户操作启动。运行期间显示前台服务通知，通知和设置页均可停止服务。移除应用任务、强制停止或进程退出会关闭服务，不会自动恢复；再次开启生成新的 256 位随机令牌。通知权限被拒绝时，Android 仍可能允许前台服务运行，可从应用设置页或系统运行中的应用列表停止。
+服务默认关闭，仅由应用前台的用户操作启动。运行期间显示前台服务通知，通知和设置页均可停止服务。移除应用任务、强制停止或进程退出会关闭服务，不会自动恢复。首次开启生成并保存 256 位随机令牌，重启服务、应用或设备后再次开启均复用同一令牌。通知权限被拒绝时，Android 仍可能允许前台服务运行，可从应用设置页或系统运行中的应用列表停止。
+
+需要撤销已有客户端的访问时，先停止服务，再点击「重置访问令牌」。重置成功后旧令牌失效；重新开启服务，复制新令牌并更新客户端。重置不会更改笔记的 AI 可见性。清除应用数据或卸载重装也会丢弃原令牌。令牌读取或保存失败时服务不会启动，也不会悄悄生成临时令牌；可以重试或手动重置。升级前只存在于内存中的临时令牌无法保留，升级后首次开启需配置一次新令牌。
 
 ## 笔记可见性
 
@@ -27,16 +29,16 @@ bearer_token_env_var = "COLORMEMO_MCP_TOKEN"
 在启动 Codex 的终端中输入令牌。以下命令适用于 Termux 的 Bash；令牌通过隐藏输入提供，不进入命令历史：
 
 ```bash
-read -r -s -p '彩笺本次访问令牌: ' COLORMEMO_MCP_TOKEN
+read -r -s -p '彩笺访问令牌: ' COLORMEMO_MCP_TOKEN
 printf '\n'
 export COLORMEMO_MCP_TOKEN
 codex
 unset COLORMEMO_MCP_TOKEN
 ```
 
-随后可让 agent「列出彩笺中 AI 可见的笔记」「新建一条采购清单」「读取刚创建的笔记并更新内容」。修改前须读取最新 `revision`，以 `expectedRevision` 提交；版本不匹配时重新读取，不会强制覆盖。更换令牌后须重启客户端，让它重新读取环境变量。
+随后可让 agent「列出彩笺中 AI 可见的笔记」「新建一条采购清单」「读取刚创建的笔记并更新内容」。修改前须读取最新 `revision`，以 `expectedRevision` 提交；版本不匹配时重新读取，不会强制覆盖。服务重启无需修改客户端中的令牌；手动重置后须更新环境变量并重启客户端。环境变量仅对当前终端及其启动的进程生效，新开终端仍需提供同一个令牌。
 
-令牌只通过用户点击复制进入系统剪贴板，设置了敏感剪贴板标记；不会保存在应用设置、通知、状态恢复、备份或日志中。粘贴后请清理剪贴板。不要将令牌写入仓库、工单或聊天上下文。
+令牌使用独立的 Android Keystore AES-256-GCM 密钥加密，保存在应用私有设置中；不进入同步、通知、界面状态恢复、系统备份、设备迁移、笔记备份或日志。只有用户点击复制才会进入系统剪贴板，并设置敏感剪贴板标记。粘贴后请清理剪贴板。不要将令牌写入仓库、工单或聊天上下文。
 
 此地址属于 Android 设备自身的网络回环接口。运行于远程服务器、云端或电脑上的 agent 不能直接访问它。本功能不自动配置转发或开放局域网端口。
 
@@ -60,21 +62,23 @@ unset COLORMEMO_MCP_TOKEN
 - 只绑定 IPv4 `127.0.0.1`；严格检查 `Host` 为带实际端口的 `127.0.0.1` / `localhost`。拒绝所有带 `Origin` 的浏览器请求，不提供 CORS，也不接受代理转发地址。不要把服务绑定到 `0.0.0.0` 或放在公开代理后。
 - 仅接受 HTTP/1.1、明确的 Content-Length、JSON Content-Type 和 MCP 要求的 Accept 类型；拒绝重复请求头、chunked、压缩请求、非法 UTF-8 和过深 JSON。请求体上限 1 MiB、响应上限 2 MiB、请求头总计 16 KiB、每行 8 KiB；4 个处理线程和最多 4 个排队连接，每条连接总时限 10 秒。超时关闭连接并取消等待中的操作，写入前检查取消状态；响应禁止缓存，关闭连接后不复用。创建不是幂等操作，断线后应先检查笔记列表再决定是否重试。
 - Android 服务不导出，不提供可让其他应用启动服务或修改权限的 Binder、广播或深层链接。现有 FileProvider 不增加任何访问范围。Android 私有应用沙箱继续隔离数据库与凭据。
-- 本机回环网络不是应用身份验证；持有本次令牌的本机程序可以访问**所有已授权笔记**。此边界无法保护已被 root/调试权限读取的应用数据、用户明确共享的导出文件或 AI 已取得的副本。笔记内容属于不可信数据，MCP 初始化和工具说明提醒 agent 不得把笔记正文当作指令。
+- 本机回环网络不是应用身份验证；持有当前令牌的本机程序可以在服务运行时访问**所有已授权笔记**，停止后再次开启仍可连接，直到手动重置令牌。此边界无法保护已被 root/调试权限读取的应用数据、用户明确共享的导出文件或 AI 已取得的副本。笔记内容属于不可信数据，MCP 初始化和工具说明提醒 agent 不得把笔记正文当作指令。
 
 ## 验证与官方依据
 
-纯 JVM 测试覆盖实际 TCP/HTTP 初始化、发现、认证、Origin/Host、版本、请求限额、畸形输入、停止与令牌轮换；仓库测试覆盖默认隐藏、所有管理操作拒绝、即时撤权、旧草稿和同步冲突、版本冲突、分页及白板附件保留。Room v1→v2 只新增空授权表，保留笔记表，现有笔记默认不授权。
+纯 JVM 测试覆盖实际 TCP/HTTP 初始化、发现、认证、Origin/Host、版本、请求限额、畸形输入、停止、重启复用令牌和更换令牌后拒绝旧凭据；令牌存储测试通过注入存储与 JVM AES 密钥验证加密读写、重新打开后复用、手动重置、损坏与密钥丢失时拒绝启动、保存失败后重试和并发首次读取。仓库测试覆盖默认隐藏、所有管理操作拒绝、即时撤权、旧草稿和同步冲突、版本冲突、分页及白板附件保留。Room v1→v2 只新增空授权表，保留笔记表，现有笔记默认不授权。
 
 ```sh
 python3 tools/verify-termux.py --core-only
 python3 tools/verify-termux.py --aapt2 /data/data/com.termux/files/usr/bin/aapt2
 ```
 
-这些命令不生成 APK。Android 真机验收应检查后台切换、通知停止、任务移除、进程重启、令牌失效、窄屏按钮及 TalkBack；APK 由获授权的 GitHub Actions 工作流生成。
+这些命令不生成 APK。Android 真机验收应检查后台切换、通知停止、任务移除、进程及设备重启后的令牌复用、Keystore 持久化、手动重置后的旧令牌失效、窄屏按钮及 TalkBack；APK 由获授权的 GitHub Actions 工作流生成。
 
 官方资料（2026-10-25 核对）：
 
 - [MCP 2025-06-18 Transports](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)：回环绑定、Origin、JSON 响应、通知、GET 405 与协议头。
 - [Codex MCP Streamable HTTP 配置](https://learn.chatgpt.com/docs/extend/mcp#streamable-http-servers)：`url` 与 `bearer_token_env_var`。
 - [Android foreground service types — specialUse](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use)：用户主动开启、持续提供本机 MCP 服务所用的前台服务类型、权限和用途声明；不使用有时限的数据同步服务类型。
+- [Android Keystore system](https://developer.android.com/privacy-and-security/keystore)：使用不可导出的设备密钥加密持久化令牌，限制密钥用途与加密模式。
+- [Android Auto Backup](https://developer.android.com/identity/data/autobackup)：应用私有设置的云备份和设备迁移排除规则；令牌与本机权限不迁移。

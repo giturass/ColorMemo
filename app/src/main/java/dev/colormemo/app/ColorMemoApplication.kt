@@ -3,6 +3,7 @@ package dev.colormemo.app
 import android.app.Application
 import dev.colormemo.app.mcp.AiServiceController
 import dev.colormemo.app.data.NoteDatabase
+import dev.colormemo.app.data.DraftController
 import dev.colormemo.app.data.NoteRepository
 import dev.colormemo.app.data.SecureSettingsStore
 import dev.colormemo.app.data.attachmentStore
@@ -43,6 +44,7 @@ class AppGraph(application: ColorMemoApplication) {
     val settings = SecureSettingsStore(application)
     val reminders = ReminderScheduler(application)
     val repository = NoteRepository(database, settings.deviceId, attachmentStore(application), ::reconcileReminders)
+    val drafts = DraftController(repository, scope)
     val sync = SyncCoordinator(repository, settings)
     val work = SyncWorkScheduler(application)
     val startupMessage = MutableStateFlow<String?>(null)

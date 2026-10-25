@@ -16,6 +16,22 @@ import kotlinx.coroutines.flow.Flow
 @Entity(tableName = "notes")
 data class NoteEntity(@PrimaryKey val id: String, val document: String)
 
+/** Compressed local editor state keeps large drawings out of CursorWindow and saved Bundles. */
+@Entity(tableName = "editor_drafts")
+data class EditorDraftEntity(@PrimaryKey val id: String, val document: ByteArray)
+
+@Dao
+interface EditorDraftDao {
+    @Query("SELECT * FROM editor_drafts LIMIT 1")
+    fun load(): EditorDraftEntity?
+
+    @Upsert
+    fun upsert(draft: EditorDraftEntity)
+
+    @Query("DELETE FROM editor_drafts WHERE id = :id")
+    fun delete(id: String)
+}
+
 /** Device-local grants. Never serialized into notes, sync documents or backups. */
 @Entity(tableName = "ai_note_grants")
 data class AiNoteGrant(@PrimaryKey val noteId: String)
@@ -53,10 +69,11 @@ interface NoteDao {
     fun upsert(notes: List<NoteEntity>)
 }
 
-@Database(entities = [NoteEntity::class, AiNoteGrant::class], version = 2, exportSchema = true)
+@Database(entities = [NoteEntity::class, AiNoteGrant::class, EditorDraftEntity::class], version = 3, exportSchema = true)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
     abstract fun aiGrants(): AiNoteGrantDao
+    abstract fun drafts(): EditorDraftDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -65,10 +82,23 @@ abstract class NoteDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `editor_drafts` (`id` TEXT NOT NULL, `document` BLOB NOT NULL, PRIMARY KEY(`id`))")
+            }
+        }
+
         fun open(context: Context): NoteDatabase = Room.databaseBuilder(
             context.applicationContext,
             NoteDatabase::class.java,
             "colormemo.db",
-        ).addMigrations(MIGRATION_1_2).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
+            .addCallback(object : Callback() {
+                override fun onOpen(db: SupportSQLiteDatabase) {
+                    // WAL's NORMAL mode can lose committed transactions after power failure.
+                    db.execSQL("PRAGMA synchronous=FULL")
+                }
+            }).build()
     }
 }

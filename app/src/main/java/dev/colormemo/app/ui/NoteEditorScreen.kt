@@ -29,7 +29,7 @@ import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.StrikethroughS
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Code
@@ -75,7 +75,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,7 +96,7 @@ import dev.colormemo.app.ui.theme.containerColor
 import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteAttachment
-import dev.colormemo.app.data.attachmentStore
+import dev.colormemo.app.data.EditorSession
 import dev.colormemo.app.data.readImageAttachment
 import dev.colormemo.app.data.readRemoteImageAttachment
 import dev.colormemo.app.data.decodeNoteImage
@@ -109,60 +108,33 @@ import dev.colormemo.app.data.retainMarkdownAttachments
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardImage
-import dev.colormemo.core.sync.SyncJson
-import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 
 private const val MAX_TITLE_LENGTH = 500
 private const val MAX_CONTENT_LENGTH = 100_000
 
-private val WhiteboardDraftSaver = Saver<Whiteboard?, String>(
-    save = { board -> board?.let { SyncJson.json.encodeToString(it) } ?: "" },
-    restore = { value -> value.takeIf(String::isNotEmpty)?.let { SyncJson.json.decodeFromString<Whiteboard>(it) } },
-)
-
-private val PendingWhiteboardImageSaver = Saver<WhiteboardImage?, String>(
-    save = { image -> image?.let { SyncJson.json.encodeToString(it) } ?: "" },
-    restore = { value -> value.takeIf(String::isNotEmpty)?.let { SyncJson.json.decodeFromString<WhiteboardImage>(it) } },
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun NoteEditorScreen(
-    note: Note?,
+    session: EditorSession,
     state: MemoUiState,
     callbacks: MemoCallbacks,
     onClose: () -> Unit,
-    newWhiteboard: Boolean = false,
 ) {
-    // A save may commit just as rotation cancels its UI coroutine. Retrying must
-    // address the same record instead of creating a second copy with a new ID.
-    val newNoteId = rememberSaveable { UUID.randomUUID().toString() }
-    var title by rememberSaveable { mutableStateOf(note?.title.orEmpty()) }
-    var content by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(note?.content.orEmpty())) }
-    var whiteboard by rememberSaveable(stateSaver = WhiteboardDraftSaver) {
-        mutableStateOf(note?.whiteboard ?: if (newWhiteboard) Whiteboard() else null)
-    }
+    val note = session.initial.baseNote
+    val checkpoint = remember { DraftCheckpoint() }
+    val newNoteId = session.draft.newNoteId
+    var title by remember { checkpoint.stateOf(session.draft.title) }
+    var content by remember { checkpoint.stateOf(TextFieldValue(session.draft.content)) }
+    var whiteboard by remember { checkpoint.stateOf(session.draft.whiteboard) }
     val context = LocalContext.current
-    val attachmentFiles = remember(context) { attachmentStore(context) }
-    val attachmentSaver = remember(attachmentFiles) {
-        Saver<List<NoteAttachment>, String>(
-            save = { values -> SyncJson.json.encodeToString(values.map { it.copy(dataBase64 = "") }) },
-            restore = { value -> SyncJson.json.decodeFromString<List<NoteAttachment>>(value).map(attachmentFiles::hydrate) },
-        )
-    }
-    var attachments by rememberSaveable(stateSaver = attachmentSaver) { mutableStateOf(note?.attachments.orEmpty()) }
-    var pendingWhiteboardImage by rememberSaveable(stateSaver = PendingWhiteboardImageSaver) { mutableStateOf<WhiteboardImage?>(null) }
-    var inlineImageIds by rememberSaveable {
-        val references = markdownAttachmentReferences(note?.content.orEmpty())
-        mutableStateOf((note?.attachments.orEmpty().filter { it.isImage && it.markdownPath in references }.map { it.id } +
-            note?.whiteboard?.images.orEmpty().map { it.attachmentId }).distinct())
-    }
+    var attachments by remember { checkpoint.stateOf(session.draft.attachments) }
+    var pendingWhiteboardImage by remember { checkpoint.stateOf(session.pendingImage) }
+    var inlineImageIds by remember { checkpoint.stateOf(session.inlineImageIds) }
     val whiteboardImageIds = remember(whiteboard?.images, pendingWhiteboardImage) {
         (whiteboard?.images.orEmpty().map { it.attachmentId } + listOfNotNull(pendingWhiteboardImage?.attachmentId)).toSet()
     }
@@ -181,10 +153,10 @@ internal fun NoteEditorScreen(
     var imageError by remember { mutableStateOf<String?>(null) }
     var imageSourceMenu by remember { mutableStateOf(false) }
     var showRemoteImage by rememberSaveable { mutableStateOf(false) }
-    var color by rememberSaveable { mutableStateOf(note?.color ?: NoteColor.DEFAULT) }
-    var pinned by rememberSaveable { mutableStateOf(note?.isPinned ?: false) }
-    var archived by rememberSaveable { mutableStateOf(note?.isArchived ?: false) }
-    var reminderAt by rememberSaveable { mutableStateOf(note?.reminderAt) }
+    var color by remember { checkpoint.stateOf(session.draft.color) }
+    var pinned by remember { checkpoint.stateOf(session.draft.isPinned) }
+    var archived by remember { checkpoint.stateOf(session.draft.isArchived) }
+    var reminderAt by remember { checkpoint.stateOf(session.draft.reminderAt) }
     var preview by rememberSaveable { mutableStateOf(note != null) }
     var requestEditorFocus by remember { mutableStateOf(false) }
     var showPalette by rememberSaveable { mutableStateOf(false) }
@@ -194,8 +166,9 @@ internal fun NoteEditorScreen(
     var showHelp by remember { mutableStateOf(false) }
     var showWhiteboardDetails by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    var saving by remember { mutableStateOf(false) }
-    var newAiVisible by rememberSaveable { mutableStateOf(false) }
+    var savingRequested by remember { mutableStateOf(false) }
+    val saving = savingRequested || state.editor.closing
+    var newAiVisible by remember { checkpoint.stateOf(session.draft.newAiVisible) }
     var changingAiVisibility by remember { mutableStateOf(false) }
     var showAiVisibility by remember { mutableStateOf(false) }
     val aiVisible = if (note == null) newAiVisible else note.id in state.aiVisibleNoteIds
@@ -209,10 +182,21 @@ internal fun NoteEditorScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val readOnly = note?.deletedAt != null
+    checkpoint.onChange = {
+        if (!readOnly) callbacks.onUpdateDraft(session.copy(
+            draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, newNoteId, whiteboard, attachments, newAiVisible),
+            pendingImage = pendingWhiteboardImage,
+            inlineImageIds = inlineImageIds,
+        ))
+    }
     val draft = NoteDraft(note, title, content.text, color, pinned, archived, reminderAt, if (note == null) newNoteId else null, whiteboard, retainedAttachments, newAiVisible)
-    val initialFingerprint = rememberSaveable { draft.fingerprint() }
-    val fingerprint = remember(title, content.text, color, pinned, archived, reminderAt, whiteboard, retainedAttachments, newAiVisible) { draft.fingerprint() }
-    val dirty = fingerprint != initialFingerprint
+    fun draftNow(): NoteDraft = NoteDraft(
+        note, title, content.text, color, pinned, archived, reminderAt, newNoteId, whiteboard,
+        retainMarkdownAttachments(attachments, inlineImageIds, markdownAttachmentReferences(content.text),
+            (whiteboard?.images.orEmpty().map { it.attachmentId } + listOfNotNull(pendingWhiteboardImage?.attachmentId)).toSet()),
+        newAiVisible,
+    )
+    val dirty = draft != session.initial
     val canSave = !saving && !importingImage && !imageExportPending && !exportingImage && pendingWhiteboardImage == null && (title.isNotBlank() || content.text.isNotBlank() || retainedAttachments.isNotEmpty() ||
         whiteboard?.hasContent == true || (whiteboard != null && note != null)) &&
         title.length <= MAX_TITLE_LENGTH && content.text.length <= MAX_CONTENT_LENGTH
@@ -221,9 +205,9 @@ internal fun NoteEditorScreen(
         val nextAttachments = retainedAttachments.filterNot { it.id == attachment.id } + attachment
         require(nextAttachments.size <= NoteAttachment.MAX_PER_NOTE) { "每条笔记最多插入 20 张图片（含已有文件）。" }
         require(nextAttachments.sumOf { it.sizeBytes.toLong() } <= NoteAttachment.MAX_NOTE_BYTES) { "每条笔记的图片及已有文件合计最多 8 MiB。" }
-        if (whiteboard != null) {
+        val image = if (whiteboard != null) {
             require(whiteboard!!.images.size < Whiteboard.MAX_IMAGES) { "每张白板最多插入 20 张图片。" }
-            val image = withContext(Dispatchers.Default) {
+            withContext(Dispatchers.Default) {
                 val bitmap = requireNotNull(decodeNoteImage(attachment.bytes(), 384)) { "图片无法解码，请选择其他图片。" }
                 try {
                     WhiteboardImage(UUID.randomUUID().toString(), attachment.id, 0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
@@ -231,14 +215,16 @@ internal fun NoteEditorScreen(
                     bitmap.recycle()
                 }
             }
-            pendingWhiteboardImage = image
-        } else {
-            content = content.copy(selection = TextRange(imageInsertionStart, imageInsertionEnd)).insertMarkdownImage(attachment)
-            preview = false
-            requestEditorFocus = true
+        } else null
+        checkpoint.batch {
+            attachments = attachments.filterNot { it.id == attachment.id } + attachment
+            inlineImageIds = (inlineImageIds + attachment.id).distinct()
+            if (image != null) pendingWhiteboardImage = image else {
+                content = content.copy(selection = TextRange(imageInsertionStart, imageInsertionEnd)).insertMarkdownImage(attachment)
+                preview = false
+                requestEditorFocus = true
+            }
         }
-        attachments = attachments.filterNot { it.id == attachment.id } + attachment
-        inlineImageIds = (inlineImageIds + attachment.id).distinct()
     }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -314,29 +300,39 @@ internal fun NoteEditorScreen(
     val currentNote = state.notes.firstOrNull { it.id == note?.id }
     val remoteChanged = !state.loading && note != null && currentNote != null && currentNote.revision != note.revision
 
+    val discard: () -> Unit = {
+        if (!saving) {
+            savingRequested = true
+            scope.launch {
+                try {
+                    if (callbacks.onDiscardDraft()) onClose()
+                    else saveError = "无法结束编辑，草稿仍保留，请重试。"
+                } finally { savingRequested = false }
+            }
+        }
+    }
     val close: () -> Unit = {
         if (!saving && !importingImage && !imageExportPending && !exportingImage && pendingWhiteboardImage == null) {
-            if (dirty && !readOnly) showLeaveDialog = true else onClose()
+            if (draftNow() != session.initial && !readOnly) showLeaveDialog = true else discard()
         }
     }
     val save: () -> Unit = {
-        // The restored baseline omits the drawing and text to keep saved state small.
-        // Saving an unchanged draft must not manufacture a revision from that baseline.
-        if (!saving && note != null && !dirty) {
-            onClose()
+        val latestDraft = draftNow()
+        if (!saving && note != null && latestDraft == session.initial) {
+            discard()
         } else if (canSave) {
-            saving = true
+            savingRequested = true
             saveError = null
             scope.launch {
                 try {
-                    if (callbacks.onSaveNote(draft)) onClose()
+                    if (callbacks.onSaveNote(latestDraft)) onClose()
                     else saveError = "保存失败，修改仍保留在这里，请重试。"
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
                     saveError = "保存失败，修改仍保留在这里，请重试。"
                 } finally {
-                    saving = false
+                    savingRequested = false
                 }
             }
         }
@@ -349,17 +345,29 @@ internal fun NoteEditorScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        when {
-                            readOnly -> if (whiteboard != null) "回收站白板" else "回收站便签"
-                            whiteboard != null -> title.ifBlank { if (note == null) "新白板" else "编辑白板" }
-                            note == null -> "新便签"
-                            else -> "编辑便签"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column {
+                        Text(
+                            when {
+                                readOnly -> if (whiteboard != null) "回收站白板" else "回收站便签"
+                                whiteboard != null -> title.ifBlank { if (note == null) "新白板" else "编辑白板" }
+                                note == null -> "新便签"
+                                else -> "编辑便签"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (!readOnly) Text(
+                            when {
+                                state.editor.error != null -> "草稿保存失败"
+                                state.editor.saving || draft.copy(attachments = attachments) != session.draft -> "正在保存草稿…"
+                                dirty -> "草稿已保存到本机"
+                                else -> "编辑时自动保存草稿"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (state.editor.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 },
                 navigationIcon = { IconButton(onClick = close, enabled = !saving) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") } },
                 actions = {
@@ -367,11 +375,9 @@ internal fun NoteEditorScreen(
                         IconToggleButton(checked = pinned, onCheckedChange = { pinned = it }, enabled = !saving) {
                             Icon(Icons.Outlined.PushPin, if (pinned) "取消置顶" else "置顶", tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        TextButton(onClick = save, enabled = canSave) {
+                        IconButton(onClick = save, enabled = canSave) {
                             if (saving) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                            else Icon(Icons.Outlined.Check, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (saving) "保存中" else "保存")
+                            else Icon(Icons.Outlined.Save, "保存")
                         }
                     }
                 },
@@ -399,7 +405,7 @@ internal fun NoteEditorScreen(
                             }
                             AiVisibilityButton(aiVisible, state.aiAccessLoaded && !changingAiVisibility) { showAiVisibility = true }
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = { callbacks.onRestore(note.id); onClose() }) { Text("恢复便签") }
+                            TextButton(onClick = { callbacks.onRestore(note.id); discard() }) { Text("恢复便签") }
                         }
                     } else {
                         if (showPalette) {
@@ -496,6 +502,11 @@ internal fun NoteEditorScreen(
                 else Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp),
             ),
         ) {
+            if (state.editor.recovered) EditorNotice("已恢复上次未完成的编辑，可继续修改并保存。")
+            state.editor.error?.let {
+                EditorNotice(it, isError = true)
+                TextButton(onClick = callbacks.onRetryDraft) { Text("重试保存草稿") }
+            }
             if (remoteChanged && !readOnly) {
                 EditorNotice("其他设备已修改这条便签。保存时会保留两份修改。")
             }
@@ -538,7 +549,10 @@ internal fun NoteEditorScreen(
             if (whiteboard != null) {
                 WhiteboardEditor(
                     whiteboard = whiteboard!!,
-                    onWhiteboardChange = { whiteboard = it },
+                    onWhiteboardChange = { board -> checkpoint.batch {
+                        whiteboard = board
+                        if (board.images.any { it.id == pendingWhiteboardImage?.id }) pendingWhiteboardImage = null
+                    } },
                     attachments = retainedAttachments,
                     imageToInsert = pendingWhiteboardImage,
                     onImageInserted = { pendingWhiteboardImage = null },
@@ -685,7 +699,7 @@ internal fun NoteEditorScreen(
             confirmButton = { TextButton(onClick = { showLeaveDialog = false; save() }, enabled = canSave) { Text("保存") } },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { showLeaveDialog = false; onClose() }) { Text("放弃修改") }
+                    TextButton(onClick = { showLeaveDialog = false; discard() }, enabled = !saving) { Text("放弃修改") }
                     TextButton(onClick = { showLeaveDialog = false }) { Text("继续编辑") }
                 }
             },
@@ -700,7 +714,7 @@ internal fun NoteEditorScreen(
                 TextButton(onClick = {
                     showDeleteDialog = false
                     if (readOnly) callbacks.onDeleteForever(note.id) else callbacks.onTrash(note.id)
-                    onClose()
+                    discard()
                 }) { Text(if (readOnly) "彻底删除" else "移到回收站", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("取消") } },
@@ -858,14 +872,6 @@ private fun EditorNotice(message: String, isError: Boolean = false) {
     ) {
         Text(message, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
     }
-}
-
-private fun NoteDraft.fingerprint(): String {
-    val text = listOf(title, content, color.name, isPinned.toString(), isArchived.toString(), reminderAt.toString(), newAiVisible.toString(),
-        whiteboard?.let { SyncJson.json.encodeToString(it) }.orEmpty(),
-        SyncJson.json.encodeToString(attachments.map { it.copy(dataBase64 = "") }))
-        .joinToString("") { "${it.length}:$it" }
-    return MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 }
 
 private fun TextFieldValue.insert(prefix: String, suffix: String, placeholder: String, block: Boolean = false): TextFieldValue {

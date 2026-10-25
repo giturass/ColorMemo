@@ -30,8 +30,8 @@ class LocalMcpServer(
     private val protocol: McpProtocol,
     requestedPort: Int = PORT,
     private val requestTimeoutMillis: Long = 10_000,
+    val token: String = generateToken(),
 ) : Closeable {
-    val token: String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) })
     private val authorization = "Bearer $token".toByteArray(Charsets.UTF_8)
     private val active = AtomicBoolean(false)
     private val listener = ServerSocket()
@@ -46,6 +46,7 @@ class LocalMcpServer(
 
     init {
         try {
+            require(token.matches(Regex("[A-Za-z0-9_-]{43}"))) { "Invalid MCP token" }
             require(requestTimeoutMillis in 1L..10_000L)
             listener.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), requestedPort), 8)
         } catch (error: Exception) {
@@ -198,5 +199,8 @@ class LocalMcpServer(
         const val PORT = 39451
         const val URL = "http://127.0.0.1:$PORT/mcp"
         const val MAX_REQUEST_BYTES = 1024 * 1024
+
+        fun generateToken(): String = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) })
     }
 }

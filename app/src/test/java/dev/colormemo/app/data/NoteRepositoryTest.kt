@@ -7,6 +7,10 @@ import dev.colormemo.app.ui.inSection
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteAttachment
 import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.core.model.WhiteboardText
+import dev.colormemo.core.model.WhiteboardImage
+import dev.colormemo.core.model.WhiteboardPoint
+import dev.colormemo.core.model.WhiteboardStroke
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.mcp.AiCommand
 import dev.colormemo.core.mcp.AiNoteException
@@ -35,6 +39,98 @@ import java.util.concurrent.TimeUnit
 
 class NoteRepositoryTest {
     @get:Rule val temporary = TemporaryFolder()
+
+    @Test
+    fun draftRecoveryPreservesFullBaselineAndAttachmentsWithoutWritingANote() = runBlocking {
+        val database = MemoryNoteDatabase()
+        val attachments = AttachmentStore(temporary.newFolder())
+        val repository = NoteRepository(database, "device", attachments)
+        val attachment = NoteAttachment.create("test.txt", "text/plain", "未保存附件".toByteArray())
+        val base = note("original").copy(content = "旧正文", attachments = listOf(attachment))
+        val opened = EditorSession.open(base)
+        val edited = opened.copy(draft = opened.draft.copy(title = "标题", content = "未保存正文\n".repeat(5000), reminderAt = 1L))
+        repository.writeDraft(edited)
+
+        val restarted = NoteRepository(database, "device", attachments)
+        assertEquals(edited, restarted.loadDraft())
+        assertTrue(restarted.snapshot().isEmpty())
+        assertTrue(database.drafts().load()!!.document.size < 100_000)
+    }
+
+    @Test
+    fun completedDraftIsRemovedAndSavingRecoveryRetainsConcurrentEdits() = runBlocking {
+        val repository = repository()
+        val base = note("shared").copy(content = "原文")
+        repository.merge(listOf(base))
+        val opened = EditorSession.open(base)
+        val edited = opened.copy(draft = opened.draft.copy(content = "本机未保存正文"))
+        repository.writeDraft(edited)
+        repository.merge(listOf(base.copy(content = "另一设备正文").edited("remote")))
+        val recovered = repository.loadDraft()!!
+        repository.commitDraft(recovered.draft, recovered.id)
+
+        assertNull(repository.loadDraft())
+        assertEquals(setOf("本机未保存正文", "另一设备正文"), repository.snapshot().map { it.content }.toSet())
+    }
+
+    @Test
+    fun failedSaveKeepsDraftAndDiscardLeavesOriginalUntouched() = runBlocking {
+        val repository = repository()
+        val base = note("original")
+        repository.merge(listOf(base))
+        val opened = EditorSession.open(base)
+        val invalid = opened.copy(draft = opened.draft.copy(title = "x".repeat(501)))
+        repository.writeDraft(invalid)
+        assertThrows(NoteInputException::class.java) { runBlocking { repository.commitDraft(invalid.draft, invalid.id) } }
+        assertEquals(invalid, repository.loadDraft())
+        repository.discardDraft(invalid.id)
+        assertNull(repository.loadDraft())
+        assertEquals(listOf(base), repository.snapshot())
+    }
+
+    @Test
+    fun unchangedSaveClearsOnlyItsOwnDraftWithoutCreatingARevision() = runBlocking {
+        val repository = repository()
+        val base = note("original")
+        repository.merge(listOf(base))
+        val opened = EditorSession.open(base)
+        repository.writeDraft(opened)
+        repository.commitDraft(opened.draft, "another-session")
+        assertEquals(opened, repository.loadDraft())
+        repository.commitDraft(opened.draft, opened.id)
+        assertNull(repository.loadDraft())
+        assertEquals(listOf(base), repository.snapshot())
+    }
+
+    @Test
+    fun whiteboardLayersAndAnImageAwaitingPlacementSurviveRestart() = runBlocking {
+        val repository = repository()
+        val attachment = NoteAttachment.create("image.png", "image/png", byteArrayOf(1, 2, 3))
+        val image = WhiteboardImage("image", attachment.id, 1f, 2f, 100f, 100f)
+        val board = Whiteboard(
+            strokes = listOf(WhiteboardStroke(points = listOf(WhiteboardPoint(5f, 6f)))),
+            texts = listOf(WhiteboardText("text", "未保存白板文字", 10f, 10f, 300f)),
+        )
+        val opened = EditorSession.open(null, whiteboard = true)
+        val session = opened.copy(draft = opened.draft.copy(whiteboard = board, attachments = listOf(attachment)),
+            pendingImage = image, inlineImageIds = listOf(attachment.id))
+        repository.writeDraft(session)
+        assertEquals(session, repository.loadDraft())
+        assertTrue(repository.snapshot().isEmpty())
+    }
+
+    @Test
+    fun textOnlyWhiteboardCanBeCommittedFromRecovery() = runBlocking {
+        val repository = repository()
+        val opened = EditorSession.open(null, whiteboard = true)
+        val session = opened.copy(draft = opened.draft.copy(whiteboard = Whiteboard(
+            texts = listOf(WhiteboardText("text", "只有文字的白板", 10f, 10f, 300f)),
+        )))
+        repository.writeDraft(session)
+        repository.commitDraft(repository.loadDraft()!!.draft, session.id)
+        assertNull(repository.loadDraft())
+        assertEquals(session.draft.whiteboard, repository.snapshot().single().whiteboard)
+    }
 
     @Test
     fun restoringTextBoardsAndArchivedNotesKeepsTheirOriginalSectionAndOrder() = runBlocking {
@@ -285,6 +381,13 @@ class NoteRepositoryTest {
 
     /** Exercise repository serialization and mutations without Android's SQLite runtime. */
     private class MemoryNoteDatabase : NoteDatabase() {
+        private var draft: EditorDraftEntity? = null
+        private val draftDao = object : EditorDraftDao {
+            override fun load() = draft
+            override fun upsert(draft: EditorDraftEntity) { this@MemoryNoteDatabase.draft = draft }
+            override fun delete(id: String) { if (draft?.id == id) draft = null }
+        }
+        override fun drafts() = draftDao
         var onGrantChecked: () -> Unit = {}
         private val rows = MutableStateFlow<List<NoteEntity>>(emptyList())
         private val grants = MutableStateFlow<List<String>>(emptyList())

@@ -62,17 +62,40 @@ class LocalMcpServerTest {
     }
 
     @Test
-    fun stoppingClosesTheListenerAndTheNextServerUsesADifferentToken() {
+    fun stoppingClosesTheListenerAndRestartAcceptsTheSavedToken() {
         val first = LocalMcpServer(McpProtocol { JsonNull }, 0)
         first.start()
         val port = first.port
         val token = first.token
         first.close()
         assertThrows(java.io.IOException::class.java) { Socket("127.0.0.1", port).close() }
-        LocalMcpServer(McpProtocol { JsonNull }, port).use { next ->
+        LocalMcpServer(McpProtocol { JsonNull }, port, token = token).use { next ->
+            next.start()
+            assertEquals(200, send(next, token = token).status)
+        }
+    }
+
+    @Test
+    fun resettingTheTokenRejectsTheOldCredential() {
+        val token = LocalMcpServer.generateToken()
+        LocalMcpServer(McpProtocol { JsonNull }, 0, token = token).use { first ->
+            first.start()
+            assertEquals(200, send(first, token = token).status)
+        }
+        LocalMcpServer(McpProtocol { JsonNull }, 0, token = LocalMcpServer.generateToken()).use { next ->
             next.start()
             assertNotEquals(token, next.token)
             assertEquals(401, send(next, token = token).status)
+            assertEquals(200, send(next).status)
+        }
+    }
+
+    @Test
+    fun invalidSavedCredentialsCannotStartAServer() {
+        for (token in listOf("", "short", "a".repeat(42) + "\n", "a".repeat(44))) {
+            assertThrows(IllegalArgumentException::class.java) {
+                LocalMcpServer(McpProtocol { JsonNull }, 0, token = token).close()
+            }
         }
     }
 

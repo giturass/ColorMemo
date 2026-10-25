@@ -48,6 +48,15 @@ class AiMcpService : Service() {
                 try {
                     graph.ready.await()
                     ensureActive()
+                    val token = try {
+                        graph.ai.loadToken()
+                    } catch (_: Exception) {
+                        ensureActive()
+                        graph.ai.clear("无法读取或保存访问令牌，请重试；仍失败可在停止服务后重置令牌")
+                        stopSelf()
+                        return@launch
+                    }
+                    ensureActive()
                     candidate = LocalMcpServer(McpProtocol(AiNoteStore { command ->
                         val result = graph.repository.execute(command)
                         if (command !is AiCommand.ListNotes && command !is AiCommand.Read) {
@@ -55,7 +64,7 @@ class AiMcpService : Service() {
                             runCatching { graph.work.afterEdit(graph.settings.settings.value) }
                         }
                         result
-                    }))
+                    }), token = token)
                     ensureActive()
                     installed = graph.ai.install(candidate)
                     if (!installed) stopSelf()

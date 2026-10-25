@@ -5,8 +5,11 @@ import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteAttachment
 import dev.colormemo.core.model.NoteColor
 import dev.colormemo.core.model.Whiteboard
+import dev.colormemo.app.data.DraftState
+import dev.colormemo.app.data.EditorSession
+import kotlinx.serialization.Serializable
 
-/** State supplied by the application; screen navigation and drafts stay in the UI. */
+/** State supplied by the application, including the durable editor session. */
 data class MemoUiState(
     val notes: List<Note> = emptyList(),
     val loading: Boolean = true,
@@ -21,9 +24,11 @@ data class MemoUiState(
     val aiAccessLoaded: Boolean = false,
     val aiServiceRunning: Boolean = false,
     val aiServiceStarting: Boolean = false,
+    val editor: DraftState = DraftState(),
 )
 
 /** Keep the opening snapshot so a save can preserve edits made by another device. */
+@Serializable
 data class NoteDraft(
     val baseNote: Note? = null,
     val title: String = "",
@@ -90,4 +95,9 @@ data class MemoCallbacks(
     val onStartAiService: () -> Unit = {},
     val onStopAiService: () -> Unit = {},
     val onCopyAiToken: () -> Unit = {},
+    val onResetAiToken: () -> Unit = {},
+    val onOpenEditor: (Note?, Boolean) -> Unit = { _, _ -> },
+    val onUpdateDraft: (EditorSession) -> Unit = {},
+    val onDiscardDraft: suspend () -> Boolean = { false },
+    val onRetryDraft: () -> Unit = {},
 )

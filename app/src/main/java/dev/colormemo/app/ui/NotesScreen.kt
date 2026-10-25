@@ -142,16 +142,16 @@ internal fun MemoDrawer(
         HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
         NavigationDrawerItem(
             selected = false,
-            onClick = onSettings,
-            label = { Text("设置") },
-            icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+            onClick = onAiSettings,
+            label = { Text("MCP服务器") },
+            icon = { Icon(Icons.Outlined.SmartToy, contentDescription = null) },
             modifier = Modifier.padding(horizontal = 12.dp),
         )
         NavigationDrawerItem(
             selected = false,
-            onClick = onAiSettings,
-            label = { Text("本地 AI 服务") },
-            icon = { Icon(Icons.Outlined.SmartToy, contentDescription = null) },
+            onClick = onSettings,
+            label = { Text("设置") },
+            icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
             modifier = Modifier.padding(horizontal = 12.dp),
         )
     }

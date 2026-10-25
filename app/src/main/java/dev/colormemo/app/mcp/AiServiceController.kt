@@ -12,14 +12,24 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class AiServiceStatus(val running: Boolean = false, val starting: Boolean = false, val error: String? = null)
 
-/** Credentials exist only in the live server, never preferences, saved UI state or notifications. */
+/** Credentials stay in encrypted device-local storage and the live server, never UI state or notifications. */
 class AiServiceController(private val context: Context) {
     private val lock = Any()
     private val serviceIntent = Intent(context, AiMcpService::class.java)
+    private val tokens = AiTokenStore(context)
     private var server: LocalMcpServer? = null
     private var servicePendingDestruction = false
     private val mutableStatus = MutableStateFlow(AiServiceStatus())
     val status = mutableStatus.asStateFlow()
+
+    internal fun loadToken(): String = tokens.getOrCreate()
+
+    /** Called on IO; serialize with start so no live server can retain a reset token. */
+    fun resetToken(): Boolean = synchronized(lock) {
+        if (servicePendingDestruction || mutableStatus.value.let { it.running || it.starting }) return@synchronized false
+        tokens.reset()
+        true
+    }
 
     fun start() = synchronized(lock) {
         if (servicePendingDestruction) return@synchronized

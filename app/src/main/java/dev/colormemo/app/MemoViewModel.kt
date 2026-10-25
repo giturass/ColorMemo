@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.colormemo.app.data.BackupService
+import dev.colormemo.app.data.EditorSession
+import dev.colormemo.core.model.Note
 import dev.colormemo.core.sync.SyncProtocolException
 import dev.colormemo.app.data.NoteInputException
 import dev.colormemo.app.data.SyncPreferences
@@ -15,6 +17,7 @@ import dev.colormemo.app.ui.NoteDraft
 import dev.colormemo.app.ui.SyncSettingsUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -28,6 +31,9 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
     private val backups = BackupService(application, graph.repository)
 
     init {
+        viewModelScope.launch {
+            graph.drafts.state.collect { editor -> mutableState.update { it.copy(editor = editor) } }
+        }
         refreshPermissions()
         viewModelScope.launch {
             try {
@@ -71,18 +77,32 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    suspend fun saveNote(draft: NoteDraft): Boolean = try {
-        graph.ready.await()
-        graph.repository.save(draft)
-        graph.work.afterEdit(graph.settings.settings.value)
-        showMessage(graph.startupMessage.value ?: "已保存到本机")
-        true
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (error: Exception) {
-        showMessage(if (error is NoteInputException || error is SyncProtocolException) error.message ?: "笔记内容无效" else "笔记保存失败，请重试")
-        false
-    }
+    suspend fun saveNote(draft: NoteDraft): Boolean = graph.scope.async {
+        try {
+            val saved = graph.drafts.save(draft)
+            if (saved) {
+                graph.scope.launch {
+                    try {
+                        graph.ready.await()
+                        graph.work.afterEdit(graph.settings.settings.value)
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { showMessage("笔记已保存到本机，自动同步暂未安排") }
+                }
+                showMessage(graph.startupMessage.value ?: "已保存到本机")
+            }
+            saved
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            showMessage(if (error is NoteInputException || error is SyncProtocolException) error.message ?: "笔记内容无效" else "笔记保存失败，请重试")
+            false
+        }
+    }.await()
+
+    fun openEditor(note: Note?, whiteboard: Boolean) = graph.drafts.open(note, whiteboard)
+    fun updateDraft(session: EditorSession) = graph.drafts.update(session)
+    suspend fun discardDraft(): Boolean = graph.drafts.discard()
+    fun flushDraft() = graph.drafts.flush()
 
     fun setPinned(id: String, pinned: Boolean) = edit { graph.repository.setPinned(id, pinned) }
     fun setArchived(id: String, archived: Boolean) = edit { graph.repository.setArchived(id, archived) }
@@ -104,6 +124,16 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
     fun stopAiService() = graph.ai.stop()
     fun copyAiToken() {
         showMessage(if (graph.ai.copyToken()) "访问令牌已复制，仅交给可信的本机 AI 客户端" else "请先开启本地 AI 服务")
+    }
+
+    fun resetAiToken() {
+        viewModelScope.launch {
+            try {
+                val reset = withContext(Dispatchers.IO) { graph.ai.resetToken() }
+                showMessage(if (reset) "访问令牌已重置，开启服务后请复制新令牌并更新客户端" else "请先停止服务，稍后再重置访问令牌")
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { showMessage("访问令牌重置失败，请重试") }
+        }
     }
 
     private fun edit(block: suspend () -> Unit) {

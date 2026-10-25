@@ -46,6 +46,10 @@ class MainActivity : ComponentActivity() {
                     state = state.value,
                     callbacks = MemoCallbacks(
                         onSaveNote = model::saveNote,
+                        onOpenEditor = model::openEditor,
+                        onUpdateDraft = model::updateDraft,
+                        onDiscardDraft = model::discardDraft,
+                        onRetryDraft = model::flushDraft,
                         onSetPinned = model::setPinned,
                         onSetArchived = model::setArchived,
                         onTrash = model::trash,
@@ -55,6 +59,7 @@ class MainActivity : ComponentActivity() {
                         onStartAiService = model::startAiService,
                         onStopAiService = model::stopAiService,
                         onCopyAiToken = model::copyAiToken,
+                        onResetAiToken = model::resetAiToken,
                         onSaveSyncSettings = model::saveSyncSettings,
                         onTestSync = model::testSync,
                         onSync = model::syncNow,
@@ -82,6 +87,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         model.refreshPermissions()
+    }
+
+    override fun onPause() {
+        model.flushDraft()
+        super.onPause()
     }
 
     private fun requestNotifications() {

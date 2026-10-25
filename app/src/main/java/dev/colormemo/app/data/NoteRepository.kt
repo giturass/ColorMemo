@@ -23,6 +23,10 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.util.UUID
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 class NoteInputException(message: String) : IllegalArgumentException(message)
 
@@ -32,10 +36,34 @@ class NoteRepository internal constructor(
     private val deviceId: String,
     private val attachmentStore: AttachmentStore,
     private val onCommitted: () -> Unit = {},
-) : AiNoteStore {
+) : AiNoteStore, DraftPersistence {
     private val dao = database.notes()
     private val grants = database.aiGrants()
     private val writeMutex = Mutex()
+
+    override suspend fun loadDraft(): EditorSession? = withContext(Dispatchers.IO) {
+        database.drafts().load()?.let { row ->
+            val json = GZIPInputStream(ByteArrayInputStream(row.document)).bufferedReader(Charsets.UTF_8).use { it.readText() }
+            SyncJson.json.decodeFromString<EditorSession>(json).mapAttachments(attachmentStore::hydrate)
+        }
+    }
+
+    override suspend fun writeDraft(session: EditorSession) = withContext(Dispatchers.IO) {
+        val metadata = session.mapAttachments {
+            attachmentStore.persist(it)
+            it.copy(dataBase64 = "")
+        }
+        val bytes = ByteArrayOutputStream().apply {
+            GZIPOutputStream(this).bufferedWriter(Charsets.UTF_8).use { it.write(SyncJson.json.encodeToString(metadata)) }
+        }.toByteArray()
+        database.drafts().upsert(EditorDraftEntity(session.id, bytes))
+    }
+
+    override suspend fun discardDraft(id: String) = withContext(Dispatchers.IO) { database.drafts().delete(id) }
+
+    override suspend fun commitDraft(draft: NoteDraft, sessionId: String) {
+        save(draft, sessionId)
+    }
 
     val aiVisibleIds: Flow<Set<String>> = grants.observeIds().map { it.toSet() }.flowOn(Dispatchers.IO)
 
@@ -54,11 +82,11 @@ class NoteRepository internal constructor(
 
     suspend fun snapshot(): List<Note> = withContext(Dispatchers.IO) { dao.getAll().map(::decode) }
 
-    suspend fun save(draft: NoteDraft): Note = withContext(Dispatchers.IO) {
+    suspend fun save(draft: NoteDraft, completingDraftId: String? = null): Note = withContext(Dispatchers.IO) {
         checkInput(draft.title.length <= 500, "标题最多 500 个字符")
         checkInput(draft.content.length <= 100_000, "单条笔记最多 100,000 个字符")
         checkInput(draft.title.isNotBlank() || draft.content.isNotBlank() || draft.attachments.isNotEmpty() ||
-            draft.whiteboard?.strokes?.isNotEmpty() == true || (draft.whiteboard != null && draft.baseNote != null),
+            draft.whiteboard?.hasContent == true || (draft.whiteboard != null && draft.baseNote != null),
             "先写下或画下一点内容再保存")
         val now = System.currentTimeMillis()
         // An unchanged reminder may already be in the past. A newly chosen one must be future.
@@ -81,12 +109,15 @@ class NoteRepository internal constructor(
                 whiteboard = draft.whiteboard,
                 attachments = draft.attachments,
             )
-            if (draft.baseNote != null && candidate == base) return@withLock base
-            val changed = candidate.edited(deviceId, now)
+            val unchanged = draft.baseNote != null && candidate == base
+            val changed = if (unchanged) base else candidate.edited(deviceId, now)
             database.runInTransaction {
-                val isNew = dao.find(changed.id) == null
-                mergeInTransaction(listOf(changed))
-                if (isNew && draft.newAiVisible) grants.grant(AiNoteGrant(changed.id))
+                if (!unchanged) {
+                    val isNew = dao.find(changed.id) == null
+                    mergeInTransaction(listOf(changed))
+                    if (isNew && draft.newAiVisible) grants.grant(AiNoteGrant(changed.id))
+                }
+                completingDraftId?.let { database.drafts().delete(it) }
             }
             onCommitted()
             changed
