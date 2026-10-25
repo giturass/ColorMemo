@@ -92,6 +92,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.colormemo.app.ui.theme.containerColor
 import dev.colormemo.app.ui.theme.displayName
 import dev.colormemo.core.model.Note
@@ -448,6 +449,9 @@ internal fun NoteEditorScreen(
                                             onClick = { imageSourceMenu = false; showRemoteImage = true })
                                     }
                                 }
+                                IconButton(onClick = { showReminder = true }, enabled = !saving) {
+                                    Icon(Icons.Outlined.NotificationsNone, "设置提醒")
+                                }
                             }
                             Spacer(Modifier.weight(1f))
                             Box {
@@ -455,8 +459,6 @@ internal fun NoteEditorScreen(
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                     ModifiedTimeLabel(note)
                                     HorizontalDivider()
-                                    DropdownMenuItem(text = { Text("设置提醒") }, leadingIcon = { Icon(Icons.Outlined.NotificationsNone, null) },
-                                        onClick = { menuOpen = false; showReminder = true })
                                     if (whiteboard != null) DropdownMenuItem(text = { Text("保存为图片（PNG）") },
                                         leadingIcon = { Icon(Icons.Outlined.SaveAlt, null) }, enabled = canExportImage, onClick = exportImage)
                                     DropdownMenuItem(text = { Text(if (archived) "取消归档" else "归档") }, leadingIcon = { Icon(if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null) }, onClick = { menuOpen = false; archived = !archived })
@@ -754,12 +756,13 @@ internal fun NoteEditorScreen(
 
 @Composable
 private fun AiVisibilityButton(visible: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val tint = if (visible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     IconButton(onClick = onClick, enabled = enabled) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.size(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Icon(if (visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-                if (visible) "AI 可见，点击管理权限" else "AI 不可见，点击管理权限", Modifier.size(20.dp),
-                tint = if (visible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("AI", style = MaterialTheme.typography.labelSmall)
+                if (visible) "AI 可见，点击管理权限" else "AI 不可见，点击管理权限", Modifier.size(18.dp),
+                tint = tint.copy(alpha = if (enabled) 1f else 0.38f))
+            Text("AI", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 10.sp))
         }
     }
 }
