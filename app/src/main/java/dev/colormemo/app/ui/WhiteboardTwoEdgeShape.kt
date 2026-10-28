@@ -29,6 +29,7 @@ internal class WhiteboardTwoEdgeDrag(
     private val opposite = before?.let { if (anchor == it.first) it.second else it.first }
     private var tip = anchor
     private var navigating = false
+    val drawingTip: WhiteboardPoint? get() = tip.takeUnless { navigating }
     var previewPoints: List<WhiteboardPoint> = before?.points.orEmpty()
         private set
 

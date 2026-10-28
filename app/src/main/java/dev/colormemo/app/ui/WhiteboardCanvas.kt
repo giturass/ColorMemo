@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -71,7 +72,10 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
@@ -170,6 +174,7 @@ internal fun WhiteboardEditor(
     var protractorPlaced by rememberSaveable { mutableStateOf(false) }
     var rulerPlaced by rememberSaveable { mutableStateOf(false) }
     var showGuides by rememberSaveable { mutableStateOf(false) }
+    var showMagnifier by rememberSaveable { mutableStateOf(true) }
     var showTextEditor by rememberSaveable { mutableStateOf(false) }
     var editingTextId by rememberSaveable { mutableStateOf<String?>(null) }
     var textPositionX by rememberSaveable { mutableStateOf(500f) }
@@ -194,6 +199,8 @@ internal fun WhiteboardEditor(
     var eraserPosition by remember { mutableStateOf<WhiteboardPoint?>(null) }
     var guidePoint by remember { mutableStateOf<WhiteboardPoint?>(null) }
     var guideAnchor by remember { mutableStateOf<WhiteboardPoint?>(null) }
+    var magnifier by remember(tool, readOnly) { mutableStateOf<WhiteboardMagnifier?>(null) }
+    val inkLayer = rememberGraphicsLayer()
     var undoBoards by remember { mutableStateOf(emptyList<Whiteboard>()) }
     var redoBoards by remember { mutableStateOf(emptyList<Whiteboard>()) }
     var lastPublished by remember { mutableStateOf(whiteboard) }
@@ -357,6 +364,9 @@ internal fun WhiteboardEditor(
                 IconToggleButton(checked = showGuides, onCheckedChange = { showGuides = it }, enabled = controlsEnabled) {
                     Icon(Icons.Outlined.GridOn, "显示辅助线")
                 }
+                IconToggleButton(checked = showMagnifier, onCheckedChange = { showMagnifier = it }, enabled = controlsEnabled) {
+                    Icon(Icons.Outlined.ZoomIn, "笔尖放大镜，手指绘制时放大线头")
+                }
                 IconToggleButton(checked = erasing, onCheckedChange = {
                     if (erasing) showEraserSettings = true else tool = WhiteboardTool.ERASER
                 }, enabled = controlsEnabled) {
@@ -480,7 +490,7 @@ internal fun WhiteboardEditor(
                             else -> "白板画布，单指绘画或擦除，双指拖动和缩放"
                         }
                     }
-                    .pointerInput(readOnly, ink, lineWidth, brush, tool, shape, instrument, eraserRadius, canvasSize) {
+                    .pointerInput(readOnly, ink, lineWidth, brush, tool, shape, instrument, eraserRadius, canvasSize, showMagnifier) {
                         awaitEachGesture {
                             val down = awaitFirstDown(pass = PointerEventPass.Initial)
                             val width = size.width.toFloat()
@@ -531,6 +541,20 @@ internal fun WhiteboardEditor(
                                     showWorkingBoard()
                                 }
                             }
+                            fun updateMagnifier(position: Offset, point: WhiteboardPoint) {
+                                val source = if (!showMagnifier || readOnly || down.type != PointerType.Touch ||
+                                    navigating || gesture.limitReached) null else when (tool) {
+                                    WhiteboardTool.PEN -> if (gesture.hasChanges) gesture.working.strokes.last().points.last() else null
+                                    WhiteboardTool.SHAPE -> if (shapeDrag != null) shapeDrag.drawingTip else point
+                                    WhiteboardTool.ERASER -> point
+                                    WhiteboardTool.INSTRUMENT -> instrumentDrag?.drawingTip
+                                    else -> null
+                                }
+                                magnifier = source?.let {
+                                    whiteboardMagnifierPlacement(width, height, position.x, position.y, density,
+                                        magnifier?.placement)?.let { placement -> WhiteboardMagnifier(it, placement) }
+                                }
+                            }
 
                             drawing = true
                             try {
@@ -552,6 +576,7 @@ internal fun WhiteboardEditor(
                                             showWorkingBoard()
                                         }
                                     }
+                                    updateMagnifier(down.position, downPoint)
                                 }
                                 do {
                                     val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -568,6 +593,7 @@ internal fun WhiteboardEditor(
                                         eraserPosition = null
                                         guidePoint = null
                                         guideAnchor = null
+                                        magnifier = null
                                         showWorkingBoard()
                                         expandedCanvasHeight = startingCanvasHeight
                                     }
@@ -597,6 +623,7 @@ internal fun WhiteboardEditor(
                                             strokeStopped = true
                                             eraserPosition = null
                                             guidePoint = null
+                                            magnifier = null
                                         } else {
                                             val point = pointAt(change.position)
                                             when (tool) {
@@ -627,7 +654,10 @@ internal fun WhiteboardEditor(
                                                     showWorkingBoard()
                                                 }
                                             }
-                                            if (!change.pressed) strokeStopped = true
+                                            if (change.pressed) updateMagnifier(change.position, point) else {
+                                                strokeStopped = true
+                                                magnifier = null
+                                            }
                                         }
                                     }
                                     event.changes.forEach { it.consume() }
@@ -643,6 +673,7 @@ internal fun WhiteboardEditor(
                                 eraserPosition = null
                                 guidePoint = null
                                 guideAnchor = null
+                                magnifier = null
                                 if (completedTextTap && !navigating) openTextEditor(textHit, downPoint)
                             }
                         }
@@ -653,26 +684,39 @@ internal fun WhiteboardEditor(
                     val origin = Offset(transform.originX, transform.originY)
                     val boardWidth = transform.canvasWidthPx
                     val boardHeight = transform.canvasHeightPx
-                    clipRect(origin.x, origin.y, origin.x + boardWidth, origin.y + boardHeight) {
-                        drawRect(Color.White, origin, Size(boardWidth, boardHeight))
-                        val gridStep = 50f * transform.scale
-                        if (showGuides && !readOnly) {
-                            val gridColor = Color(0xFFE0E3E7)
-                            for (x in 0..(Whiteboard.CANVAS_WIDTH / 50f).toInt()) {
-                                val offset = origin + Offset(x * gridStep, 0f)
-                                drawLine(gridColor, offset, offset + Offset(0f, boardHeight), 0.7.dp.toPx())
+                    // Record the artwork once per frame and reuse its drawing commands
+                    // for the lens, avoiding a second traversal of all stroke points.
+                    inkLayer.record {
+                        clipRect(origin.x, origin.y, origin.x + boardWidth, origin.y + boardHeight) {
+                            drawRect(Color.White, origin, Size(boardWidth, boardHeight))
+                            val gridStep = 50f * transform.scale
+                            if (showGuides && !readOnly) {
+                                val gridColor = Color(0xFFE0E3E7)
+                                for (x in 0..(Whiteboard.CANVAS_WIDTH / 50f).toInt()) {
+                                    val offset = origin + Offset(x * gridStep, 0f)
+                                    drawLine(gridColor, offset, offset + Offset(0f, boardHeight), 0.7.dp.toPx())
+                                }
+                                for (y in 0..(transform.canvasHeight / 50f).toInt()) {
+                                    val offset = origin + Offset(0f, y * gridStep)
+                                    drawLine(gridColor, offset, offset + Offset(boardWidth, 0f), 0.7.dp.toPx())
+                                }
+                            } else {
+                                // Dots make navigation visible even with the line guides hidden.
+                                for (x in 0..(Whiteboard.CANVAS_WIDTH / 50f).toInt()) for (y in 0..(transform.canvasHeight / 50f).toInt()) {
+                                    drawCircle(Color(0xFFE0E3E7), 0.7.dp.toPx(), origin + Offset(x * gridStep, y * gridStep))
+                                }
                             }
-                            for (y in 0..(transform.canvasHeight / 50f).toInt()) {
-                                val offset = origin + Offset(0f, y * gridStep)
-                                drawLine(gridColor, offset, offset + Offset(boardWidth, 0f), 0.7.dp.toPx())
-                            }
-                        } else {
-                            // Dots make navigation visible even with the line guides hidden.
-                            for (x in 0..(Whiteboard.CANVAS_WIDTH / 50f).toInt()) for (y in 0..(transform.canvasHeight / 50f).toInt()) {
-                                drawCircle(Color(0xFFE0E3E7), 0.7.dp.toPx(), origin + Offset(x * gridStep, y * gridStep))
+                            drawWhiteboard(whiteboard, transform.scale, origin, imageBitmaps)
+                            if (!readOnly && tool == WhiteboardTool.SHAPE && shape.requiresSecondEdge) {
+                                val points = shapePreview.ifEmpty { shapeBase?.points.orEmpty() }
+                                if (points.size >= 2) drawWhiteboard(
+                                    Whiteboard(strokes = listOf(WhiteboardStroke(ink, lineWidth, points, brush))), transform.scale, origin,
+                                )
                             }
                         }
-                        drawWhiteboard(whiteboard, transform.scale, origin, imageBitmaps)
+                    }
+                    drawLayer(inkLayer)
+                    clipRect(origin.x, origin.y, origin.x + boardWidth, origin.y + boardHeight) {
                         if (!readOnly && tool == WhiteboardTool.CUT) selection?.let { area ->
                             val corner = origin + Offset(area.left * transform.scale, area.top * transform.scale)
                             val extent = Size(area.width * transform.scale, area.height * transform.scale)
@@ -681,10 +725,6 @@ internal fun WhiteboardEditor(
                                 style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))))
                         }
                         if (!readOnly && tool == WhiteboardTool.SHAPE && shape.requiresSecondEdge) {
-                            val points = shapePreview.ifEmpty { shapeBase?.points.orEmpty() }
-                            if (points.size >= 2) drawWhiteboard(
-                                Whiteboard(strokes = listOf(WhiteboardStroke(ink, lineWidth, points, brush))), transform.scale, origin,
-                            )
                             shapeBase?.points?.forEach { point ->
                                 val position = origin + Offset(point.x * transform.scale, point.y * transform.scale)
                                 drawCircle(Color.White, 6.dp.toPx(), position)
@@ -720,6 +760,7 @@ internal fun WhiteboardEditor(
                             )
                         }
                     }
+                    if (!readOnly && showMagnifier) magnifier?.let { drawWhiteboardMagnifier(inkLayer, it, transform) }
                 }
             }
             // Keep this overlay out of measurement: changing the canvas size here

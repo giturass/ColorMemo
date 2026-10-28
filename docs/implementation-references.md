@@ -2,6 +2,10 @@
 
 以下官方文档在开发时实际查询，用于核对接口与约束。依赖版本在 Gradle 配置中固定；此处链接不代表依赖自动跟随最新版。
 
+2026-10-29 白板笔尖放大镜复核：
+
+- [Compose 图形修饰符与图层录制](https://developer.android.com/develop/ui/compose/graphics/draw/modifiers)：使用 `rememberGraphicsLayer`、`record` 与 `drawLayer` 复用画布绘制指令，再平移、放大并裁切到局部预览。工具手柄不进入放大图层，准星中心留空；只在编辑画布中绘制，不改变笔迹坐标、保存和导出。
+
 2026-10-22 回收站交互修复复核：
 
 - [Compose 滑动删除](https://developer.android.com/develop/ui/compose/touch-input/user-interactions/swipe-to-dismiss) 与 [Material3 1.3.2 官方源码](https://dl.google.com/dl/android/maven2/androidx/compose/material3/material3/1.3.2/material3-1.3.2-sources.jar)：滑动锚点依赖卡片布局；回收站及多选使用普通卡片，不创建滑动状态或启动复位动画。有效左滑完成后通过 `snapTo(Settled)` 清除保存的滑出状态，再移入回收站。
