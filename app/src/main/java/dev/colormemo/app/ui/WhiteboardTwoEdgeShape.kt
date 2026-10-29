@@ -19,14 +19,13 @@ internal data class WhiteboardTwoEdgeResult(
 internal class WhiteboardTwoEdgeDrag(
     private val shape: WhiteboardShape,
     private val before: WhiteboardTwoEdgeBase?,
-    private val down: WhiteboardPoint,
-    touchRadius: Float,
+    down: WhiteboardPoint,
+    private val touchRadius: Float,
+    private val acquireEndpointWhileDragging: Boolean = false,
 ) {
-    private val anchor = if (before == null) down else {
-        before.points.minBy { distanceSquared(it, down) }
-            .takeIf { distanceSquared(it, down) <= touchRadius * touchRadius }
-    }
-    private val opposite = before?.let { if (anchor == it.first) it.second else it.first }
+    private var down = down
+    private var anchor = if (before == null) down else endpointAt(down)
+    private val opposite get() = before?.let { if (anchor == it.first) it.second else it.first }
     private var tip = anchor
     private var navigating = false
     val drawingTip: WhiteboardPoint? get() = tip.takeUnless { navigating }
@@ -34,8 +33,14 @@ internal class WhiteboardTwoEdgeDrag(
         private set
 
     fun update(point: WhiteboardPoint): List<WhiteboardPoint> {
-        val start = anchor ?: return previewPoints
         if (navigating) return previewPoints
+        if (anchor == null && acquireEndpointWhileDragging) {
+            // A finger has no hover preview. Let its offset cursor find an endpoint
+            // before starting the second edge, then keep that endpoint locked.
+            anchor = endpointAt(point)
+            if (anchor != null) down = point
+        }
+        val start = anchor ?: return previewPoints
         // Keep the chosen endpoint fixed even when the finger grabs beside it.
         val end = whiteboardPoint(start.x + point.x - down.x, start.y + point.y - down.y)
         tip = end
@@ -63,6 +68,10 @@ internal class WhiteboardTwoEdgeDrag(
         previewPoints = before?.points.orEmpty()
         return previewPoints
     }
+
+    private fun endpointAt(point: WhiteboardPoint): WhiteboardPoint? =
+        before?.points?.minBy { distanceSquared(it, point) }
+            ?.takeIf { distanceSquared(it, point) <= touchRadius * touchRadius }
 }
 
 internal fun whiteboardTrianglePoints(

@@ -2,7 +2,11 @@
 
 以下官方文档在开发时实际查询，用于核对接口与约束。依赖版本在 Gradle 配置中固定；此处链接不代表依赖自动跟随最新版。
 
-2026-10-29 白板笔尖放大镜复核：
+2026-10-30 白板笔尖偏移预览复核：
+
+- [Compose 手势处理](https://developer.android.com/develop/ui/compose/touch-input/pointer-input/understand-gestures)：继续在 `awaitEachGesture` 内处理同一次触摸序列并消费事件；仅单指触摸画笔或图形时，在屏幕坐标中将落笔位置上移，再转换为白板坐标。按下、移动、抬起及端点命中共用这一转换，双指仍用原始触点进行平移与缩放并回滚本次绘制。准星直接叠绘在编辑画布上，移除旧放大镜及其图层录制。
+
+2026-10-29 白板笔尖放大镜复核（旧方案，已由笔尖偏移预览替代）：
 
 - [Compose 图形修饰符与图层录制](https://developer.android.com/develop/ui/compose/graphics/draw/modifiers)：使用 `rememberGraphicsLayer`、`record` 与 `drawLayer` 复用画布绘制指令，再平移、放大并裁切到局部预览。工具手柄不进入放大图层，准星中心留空；只在编辑画布中绘制，不改变笔迹坐标、保存和导出。
 - 新建白板闪退复核：[Compose UI 1.8.0 源码](https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-android/1.8.0/ui-android-1.8.0-sources.jar) 的 `LayoutNodeDrawScope.record` 与 [UI Graphics 1.8.0 源码](https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-graphics-android/1.8.0/ui-graphics-android-1.8.0-sources.jar) 的 `CanvasDrawScope`：简写 `DrawScope.record` 重定向绘制上下文时将同一 scope 用作密度来源，`dp.toPx()` 触发密度 getter 循环，导致首帧 `StackOverflowError`。白板改用 `GraphicsLayer.record` 的显式重载，传入独立的 `Density(density, fontScale)` 快照、布局方向与像素尺寸，保留绘制指令复用。

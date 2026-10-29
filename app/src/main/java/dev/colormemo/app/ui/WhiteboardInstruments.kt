@@ -131,21 +131,12 @@ internal class WhiteboardInstrumentDrag(
     private val tracingRuler = instrument == WhiteboardInstrument.RULER && before.isNearRulerEdge(start, touchRadius)
     private var rulerStart = before.rulerDistanceAt(start).coerceIn(0f, before.rulerLength)
     private var rulerEnd = rulerStart
-    private var rulerTip = before.rulerPoint(rulerStart)
     val drawingPoints: List<WhiteboardPoint> get() = tracedPoints
-    val drawingTip: WhiteboardPoint?
-        get() = when {
-            navigating -> null
-            tracingRuler -> whiteboardPoint(rulerTip.x, rulerTip.y)
-            handle == InstrumentHandle.PEN -> before.pointAt(penDegrees).let { whiteboardPoint(it.x, it.y) }
-            else -> null
-        }
 
     fun update(point: WhiteboardPoint): WhiteboardInstrumentState {
         if (navigating) return before
         if (tracingRuler) {
             val distance = before.rulerDistanceAt(point).coerceIn(0f, before.rulerLength)
-            rulerTip = before.rulerPoint(distance)
             // Preserve the whole traced extent when the finger reverses direction.
             rulerStart = minOf(rulerStart, distance)
             rulerEnd = maxOf(rulerEnd, distance)
