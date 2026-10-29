@@ -1,21 +1,19 @@
-# 彩笺 · ColorMemo 0.3.3
+# 彩笺 · ColorMemo 0.3.4
 
 支持 Android 8.0 及以上版本，可覆盖安装旧版本升级。
 
-- 笔尖放大镜改为默认关闭，可点击网格旁的放大镜图标手动开启。
-- 直尺的长度与方向、圆规的半径与弧度、量角器的大小与角度支持点击数值后手动输入，保留滑块调节；输入支持小数并检查有效范围。
-- 圆规的「起笔方向」改为「弧度」（rad）。π 为半圆，2π 为整圆；输入后点击「绘制」，从当前笔尖逆时针画出对应圆弧。虚线显示预览范围，绘制后笔尖移到终点，可继续接着画；保留拖动笔尖自由画弧。
-- 图形菜单新增五边形与菱形，沿用当前画笔样式，支持保存、擦除、撤销和导出。
+- 圆规恢复上一版操作：拖动笔尖自由画弧、一键画圆，恢复完整虚线圆预览与「起笔方向」滑块。
+- 圆规半径保留滑块调节与点击数值手动输入，支持小数并检查允许范围。
 
-使用说明见 [白板工具](https://github.com/giturass/ColorMemo/blob/v0.3.3/docs/whiteboard.md)。
+使用说明见 [白板工具](https://github.com/giturass/ColorMemo/blob/v0.3.4/docs/whiteboard.md)。
 
-草稿仅保存在当前设备，不进入同步、导出备份或 MCP 接口；异常退出可恢复的范围以最后成功写入的草稿为准。详情见 [草稿恢复](https://github.com/giturass/ColorMemo/blob/v0.3.3/docs/editor-recovery.md)。
+草稿仅保存在当前设备，不进入同步、导出备份或 MCP 接口；异常退出可恢复的范围以最后成功写入的草稿为准。详情见 [草稿恢复](https://github.com/giturass/ColorMemo/blob/v0.3.4/docs/editor-recovery.md)。
 
-配置步骤和权限范围见 [MCP服务器](https://github.com/giturass/ColorMemo/blob/v0.3.3/docs/ai-mcp.md)。白板暂支持读取、修改标题与说明和管理，不支持通过 MCP 绘制或传输附件文件。
+配置步骤和权限范围见 [MCP服务器](https://github.com/giturass/ColorMemo/blob/v0.3.4/docs/ai-mcp.md)。白板暂支持读取、修改标题与说明和管理，不支持通过 MCP 绘制或传输附件文件。
 
 升级后，已有恢复密钥继续用于同步，设置页不再提供显示、复制、生成或更换入口。在新设备配置时，请使用首次配置时保存在应用外的密钥备份。
 
-下载 `ColorMemo-v0.3.3.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
+下载 `ColorMemo-v0.3.4.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
 签名证书 SHA-256：
 

@@ -54,7 +54,7 @@ internal fun WhiteboardInstrumentControls(
     state: WhiteboardInstrumentState,
     enabled: Boolean,
     onChange: (WhiteboardInstrumentState) -> Unit,
-    onDraw: (WhiteboardInstrumentState) -> Unit,
+    onDraw: () -> Unit,
     onClose: () -> Unit,
 ) {
     val isRuler = instrument == WhiteboardInstrument.RULER
@@ -67,10 +67,9 @@ internal fun WhiteboardInstrumentControls(
                 WhiteboardInstrument.RULER -> "直尺 · 长度 ${state.rulerLength.roundToInt()} · ${String.format(Locale.ROOT, "%.1f°", state.baselineDegrees)}"
             },
                 Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-            TextButton(onClick = { onDraw(state) },
-                enabled = enabled && (instrument != WhiteboardInstrument.COMPASS || state.arcRadians > 0f)) {
+            TextButton(onClick = onDraw, enabled = enabled) {
                 Text(when (instrument) {
-                    WhiteboardInstrument.COMPASS -> if (state.arcRadians == FULL_TURN_RADIANS) "画圆" else "画弧"
+                    WhiteboardInstrument.COMPASS -> "画圆"
                     WhiteboardInstrument.PROTRACTOR -> "绘制角"
                     WhiteboardInstrument.RULER -> "画直线"
                 })
@@ -87,15 +86,13 @@ internal fun WhiteboardInstrumentControls(
             (MIN_INSTRUMENT_RADIUS * sizeFactor)..(state.maximumRadius * sizeFactor), enabled,
             onChange = { onChange(state.resized(it / sizeFactor)) })
         when (instrument) {
-            WhiteboardInstrument.COMPASS -> WhiteboardInstrumentValueControl(
-                "弧度", "圆规弧度", state.arcRadians, 0f..FULL_TURN_RADIANS, enabled, unit = "rad",
-                confirmLabel = "绘制", inputHint = "π≈3.141593 为半圆，2π≈6.283185 为整圆；确认后从笔尖逆时针绘制。",
-                onInputConfirmed = { radians ->
-                    val next = state.copy(arcRadians = radians)
-                    onChange(next)
-                    onDraw(next)
-                },
-                onChange = { onChange(state.copy(arcRadians = it)) })
+            WhiteboardInstrument.COMPASS -> Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("起笔方向", style = MaterialTheme.typography.bodySmall)
+                Slider(value = state.baselineDegrees, onValueChange = { onChange(state.copy(baselineDegrees = it)) },
+                    valueRange = 0f..360f, enabled = enabled,
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "圆规起笔方向" })
+            }
             WhiteboardInstrument.RULER -> WhiteboardInstrumentValueControl(
                 "方向", "直尺方向", state.baselineDegrees, 0f..360f, enabled, unit = "°",
                 onChange = { onChange(state.copy(baselineDegrees = it)) })
@@ -104,7 +101,7 @@ internal fun WhiteboardInstrumentControls(
                 onChange = { onChange(state.copy(angleDegrees = it)) })
         }
         Text("点击数值可手动输入。" + when (instrument) {
-            WhiteboardInstrument.COMPASS -> "弧度：π 为半圆，2π 为整圆。输入后确认可直接绘制；也可调节滑块后点击「画弧」或「画圆」。拖动圆心移动，拖动笔尖自由画弧。"
+            WhiteboardInstrument.COMPASS -> "拖动圆心移动，滑块调半径和起笔方向；拖动笔尖旋转画弧，松手结束，也可点击「画圆」。"
             WhiteboardInstrument.PROTRACTOR -> "拖动中心移动，下方圆点旋转基线，圆弧上的圆点调整测量边。"
             WhiteboardInstrument.RULER -> "拖动尺身移动，右侧圆点旋转，沿蓝色刻度边拖动画直线；也可点击「画直线」绘制整条尺边。刻度为画布单位。"
         },
@@ -120,9 +117,6 @@ private fun WhiteboardInstrumentValueControl(
     range: ClosedFloatingPointRange<Float>,
     enabled: Boolean,
     unit: String = "",
-    confirmLabel: String = "确定",
-    inputHint: String? = null,
-    onInputConfirmed: ((Float) -> Unit)? = null,
     onChange: (Float) -> Unit,
 ) {
     var showInput by rememberSaveable(description) { mutableStateOf(false) }
@@ -145,7 +139,7 @@ private fun WhiteboardInstrumentValueControl(
         val focusRequester = remember { FocusRequester() }
         val parsed = parseWhiteboardInstrumentValue(input.text, range)
         fun applyValue() {
-            parsed?.let { (onInputConfirmed ?: onChange)(it); showInput = false }
+            parsed?.let { onChange(it); showInput = false }
         }
         AlertDialog(onDismissRequest = { showInput = false }, title = { Text("输入$description") },
             text = {
@@ -154,14 +148,14 @@ private fun WhiteboardInstrumentValueControl(
                     supportingText = {
                         val minimum = range.start.toString().removeSuffix(".0")
                         val maximum = range.endInclusive.toString().removeSuffix(".0")
-                        Text("请输入 $minimum～$maximum $unit 范围内的数值" + (inputHint?.let { "\n$it" } ?: ""))
+                        Text("请输入 $minimum～$maximum $unit 范围内的数值")
                     },
                     isError = parsed == null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { applyValue() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester))
             },
-            confirmButton = { TextButton(onClick = { applyValue() }, enabled = parsed != null) { Text(confirmLabel) } },
+            confirmButton = { TextButton(onClick = { applyValue() }, enabled = parsed != null) { Text("确定") } },
             dismissButton = { TextButton(onClick = { showInput = false }) { Text("取消") } })
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
@@ -223,9 +217,7 @@ internal fun DrawScope.drawWhiteboardInstrument(
         drawCircle(color, minOf(2.dp.toPx(), handleRadius * 0.25f), position)
     }
     if (instrument == WhiteboardInstrument.COMPASS) {
-        drawArc(blue.copy(alpha = 0.7f), -state.baselineDegrees, -state.arcDegrees, useCenter = false,
-            topLeft = center - Offset(radius, radius), size = Size(radius * 2f, radius * 2f),
-            style = Stroke(width, pathEffect = dashed))
+        drawCircle(blue.copy(alpha = 0.7f), radius, center, style = Stroke(width, pathEffect = dashed))
         drawLine(grey, center, screen(state.handlePoint(InstrumentHandle.PEN)), width)
         handle(InstrumentHandle.CENTER)
         handle(InstrumentHandle.PEN)
