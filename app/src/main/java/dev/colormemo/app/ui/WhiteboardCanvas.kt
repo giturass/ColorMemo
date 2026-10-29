@@ -91,6 +91,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import dev.colormemo.core.model.Whiteboard
 import dev.colormemo.core.model.WhiteboardPoint
@@ -686,7 +687,14 @@ internal fun WhiteboardEditor(
                     val boardHeight = transform.canvasHeightPx
                     // Record the artwork once per frame and reuse its drawing commands
                     // for the lens, avoiding a second traversal of all stroke points.
-                    inkLayer.record {
+                    // Compose 1.8.0's DrawScope.record overload redirects this scope
+                    // while also using it as Density, causing recursive density reads.
+                    // Snapshot the values and use GraphicsLayer's explicit overload.
+                    inkLayer.record(
+                        density = Density(density, fontScale),
+                        layoutDirection = layoutDirection,
+                        size = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                    ) {
                         clipRect(origin.x, origin.y, origin.x + boardWidth, origin.y + boardHeight) {
                             drawRect(Color.White, origin, Size(boardWidth, boardHeight))
                             val gridStep = 50f * transform.scale
