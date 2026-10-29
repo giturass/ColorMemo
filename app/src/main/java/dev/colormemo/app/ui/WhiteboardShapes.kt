@@ -22,6 +22,8 @@ internal enum class WhiteboardShape(val displayName: String, val isArrow: Boolea
     TRIANGLE("三角形"),
     TRAPEZOID("梯形"),
     PARALLELOGRAM("平行四边形"),
+    RHOMBUS("菱形"),
+    PENTAGON("五边形"),
     HEXAGON("六边形"),
     CYLINDER("圆柱"),
     CONE("圆锥"),
@@ -151,6 +153,18 @@ internal fun WhiteboardShape.points(
             whiteboardPoint(left + width * 0.25f, top), whiteboardPoint(right - width * 0.25f, top),
             WhiteboardPoint(right, bottom), WhiteboardPoint(left, bottom),
         )
+        WhiteboardShape.RHOMBUS -> listOf(
+            WhiteboardPoint(centerX, top), WhiteboardPoint(right, centerY),
+            WhiteboardPoint(centerX, bottom), WhiteboardPoint(left, centerY),
+        )
+        WhiteboardShape.PENTAGON -> {
+            // A regular pentagon's outline, scaled to the chosen drag bounds.
+            val shoulder = height * (3f - sqrt(5f)) / 2f
+            val inset = width * (3f - sqrt(5f)) / 4f
+            listOf(WhiteboardPoint(centerX, top), whiteboardPoint(right, top + shoulder),
+                whiteboardPoint(right - inset, bottom), whiteboardPoint(left + inset, bottom),
+                whiteboardPoint(left, top + shoulder))
+        }
         WhiteboardShape.HEXAGON -> listOf(
             whiteboardPoint(left + width * 0.25f, top), whiteboardPoint(right - width * 0.25f, top),
             whiteboardPoint(right, centerY), whiteboardPoint(right - width * 0.25f, bottom),

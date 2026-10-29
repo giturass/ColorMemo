@@ -8,14 +8,26 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -28,6 +40,10 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -38,7 +54,7 @@ internal fun WhiteboardInstrumentControls(
     state: WhiteboardInstrumentState,
     enabled: Boolean,
     onChange: (WhiteboardInstrumentState) -> Unit,
-    onDraw: () -> Unit,
+    onDraw: (WhiteboardInstrumentState) -> Unit,
     onClose: () -> Unit,
 ) {
     val isRuler = instrument == WhiteboardInstrument.RULER
@@ -51,49 +67,103 @@ internal fun WhiteboardInstrumentControls(
                 WhiteboardInstrument.RULER -> "直尺 · 长度 ${state.rulerLength.roundToInt()} · ${String.format(Locale.ROOT, "%.1f°", state.baselineDegrees)}"
             },
                 Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-            TextButton(onClick = onDraw, enabled = enabled) {
+            TextButton(onClick = { onDraw(state) },
+                enabled = enabled && (instrument != WhiteboardInstrument.COMPASS || state.arcRadians > 0f)) {
                 Text(when (instrument) {
-                    WhiteboardInstrument.COMPASS -> "画圆"
+                    WhiteboardInstrument.COMPASS -> if (state.arcRadians == FULL_TURN_RADIANS) "画圆" else "画弧"
                     WhiteboardInstrument.PROTRACTOR -> "绘制角"
                     WhiteboardInstrument.RULER -> "画直线"
                 })
             }
             TextButton(onClick = onClose, enabled = enabled) { Text("收起") }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val sizeLabel = when (instrument) {
-                WhiteboardInstrument.COMPASS -> "半径"
-                WhiteboardInstrument.PROTRACTOR -> "大小"
-                WhiteboardInstrument.RULER -> "长度"
-            }
-            val sizeFactor = if (isRuler) RULER_LENGTH_FACTOR else 1f
-            Text(sizeLabel, style = MaterialTheme.typography.bodySmall)
-            Slider(value = state.radius * sizeFactor, onValueChange = { onChange(state.resized(it / sizeFactor)) },
-                valueRange = (MIN_INSTRUMENT_RADIUS * sizeFactor)..(state.maximumRadius * sizeFactor),
-                enabled = enabled && state.maximumRadius > MIN_INSTRUMENT_RADIUS,
-                modifier = Modifier.weight(1f).semantics { contentDescription = "${instrument.displayName}$sizeLabel" })
+        val sizeLabel = when (instrument) {
+            WhiteboardInstrument.COMPASS -> "半径"
+            WhiteboardInstrument.PROTRACTOR -> "大小"
+            WhiteboardInstrument.RULER -> "长度"
         }
-        if (instrument != WhiteboardInstrument.PROTRACTOR) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (isRuler) "方向" else "起笔方向", style = MaterialTheme.typography.bodySmall)
-                Slider(value = state.baselineDegrees, onValueChange = { onChange(state.copy(baselineDegrees = it)) },
-                    valueRange = 0f..360f, enabled = enabled,
-                    modifier = Modifier.weight(1f).semantics { contentDescription = if (isRuler) "直尺方向" else "圆规起笔方向" })
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("角度", style = MaterialTheme.typography.bodySmall)
-                Slider(value = state.angleDegrees, onValueChange = { onChange(state.copy(angleDegrees = it)) },
-                    valueRange = 0f..180f, enabled = enabled,
-                    modifier = Modifier.weight(1f).semantics { contentDescription = "量角器测量角度" })
-            }
+        val sizeFactor = if (isRuler) RULER_LENGTH_FACTOR else 1f
+        WhiteboardInstrumentValueControl(sizeLabel, "${instrument.displayName}$sizeLabel", state.radius * sizeFactor,
+            (MIN_INSTRUMENT_RADIUS * sizeFactor)..(state.maximumRadius * sizeFactor), enabled,
+            onChange = { onChange(state.resized(it / sizeFactor)) })
+        when (instrument) {
+            WhiteboardInstrument.COMPASS -> WhiteboardInstrumentValueControl(
+                "弧度", "圆规弧度", state.arcRadians, 0f..FULL_TURN_RADIANS, enabled, unit = "rad",
+                confirmLabel = "绘制", inputHint = "π≈3.141593 为半圆，2π≈6.283185 为整圆；确认后从笔尖逆时针绘制。",
+                onInputConfirmed = { radians ->
+                    val next = state.copy(arcRadians = radians)
+                    onChange(next)
+                    onDraw(next)
+                },
+                onChange = { onChange(state.copy(arcRadians = it)) })
+            WhiteboardInstrument.RULER -> WhiteboardInstrumentValueControl(
+                "方向", "直尺方向", state.baselineDegrees, 0f..360f, enabled, unit = "°",
+                onChange = { onChange(state.copy(baselineDegrees = it)) })
+            WhiteboardInstrument.PROTRACTOR -> WhiteboardInstrumentValueControl(
+                "角度", "量角器测量角度", state.angleDegrees, 0f..180f, enabled, unit = "°",
+                onChange = { onChange(state.copy(angleDegrees = it)) })
         }
-        Text(when (instrument) {
-            WhiteboardInstrument.COMPASS -> "拖动圆心移动，滑块调半径和起笔方向；拖动笔尖旋转画弧，松手结束，也可点击「画圆」。"
+        Text("点击数值可手动输入。" + when (instrument) {
+            WhiteboardInstrument.COMPASS -> "弧度：π 为半圆，2π 为整圆。输入后确认可直接绘制；也可调节滑块后点击「画弧」或「画圆」。拖动圆心移动，拖动笔尖自由画弧。"
             WhiteboardInstrument.PROTRACTOR -> "拖动中心移动，下方圆点旋转基线，圆弧上的圆点调整测量边。"
             WhiteboardInstrument.RULER -> "拖动尺身移动，右侧圆点旋转，沿蓝色刻度边拖动画直线；也可点击「画直线」绘制整条尺边。刻度为画布单位。"
         },
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun WhiteboardInstrumentValueControl(
+    label: String,
+    description: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    enabled: Boolean,
+    unit: String = "",
+    confirmLabel: String = "确定",
+    inputHint: String? = null,
+    onInputConfirmed: ((Float) -> Unit)? = null,
+    onChange: (Float) -> Unit,
+) {
+    var showInput by rememberSaveable(description) { mutableStateOf(false) }
+    val formatted = String.format(Locale.ROOT, "%.2f", value).trimEnd('0').trimEnd('.')
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.bodySmall)
+        Slider(value = value, onValueChange = onChange, valueRange = range,
+            enabled = enabled && range.endInclusive > range.start,
+            modifier = Modifier.weight(1f).semantics { contentDescription = description })
+        TextButton(onClick = { showInput = true }, enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = "$description，$formatted $unit，点击输入数值" }) {
+            Text(if (unit.isEmpty()) formatted else "$formatted $unit")
+        }
+    }
+    if (showInput && enabled) {
+        val initial = value.toString().removeSuffix(".0")
+        var input by rememberSaveable(description, stateSaver = TextFieldValue.Saver) {
+            mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length)))
+        }
+        val focusRequester = remember { FocusRequester() }
+        val parsed = parseWhiteboardInstrumentValue(input.text, range)
+        fun applyValue() {
+            parsed?.let { (onInputConfirmed ?: onChange)(it); showInput = false }
+        }
+        AlertDialog(onDismissRequest = { showInput = false }, title = { Text("输入$description") },
+            text = {
+                OutlinedTextField(input, onValueChange = { input = it }, label = { Text(label) },
+                    suffix = if (unit.isEmpty()) null else ({ Text(unit) }), singleLine = true,
+                    supportingText = {
+                        val minimum = range.start.toString().removeSuffix(".0")
+                        val maximum = range.endInclusive.toString().removeSuffix(".0")
+                        Text("请输入 $minimum～$maximum $unit 范围内的数值" + (inputHint?.let { "\n$it" } ?: ""))
+                    },
+                    isError = parsed == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { applyValue() }),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester))
+            },
+            confirmButton = { TextButton(onClick = { applyValue() }, enabled = parsed != null) { Text(confirmLabel) } },
+            dismissButton = { TextButton(onClick = { showInput = false }) { Text("取消") } })
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
 }
 
@@ -153,7 +223,9 @@ internal fun DrawScope.drawWhiteboardInstrument(
         drawCircle(color, minOf(2.dp.toPx(), handleRadius * 0.25f), position)
     }
     if (instrument == WhiteboardInstrument.COMPASS) {
-        drawCircle(blue.copy(alpha = 0.7f), radius, center, style = Stroke(width, pathEffect = dashed))
+        drawArc(blue.copy(alpha = 0.7f), -state.baselineDegrees, -state.arcDegrees, useCenter = false,
+            topLeft = center - Offset(radius, radius), size = Size(radius * 2f, radius * 2f),
+            style = Stroke(width, pathEffect = dashed))
         drawLine(grey, center, screen(state.handlePoint(InstrumentHandle.PEN)), width)
         handle(InstrumentHandle.CENTER)
         handle(InstrumentHandle.PEN)

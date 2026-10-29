@@ -29,7 +29,8 @@ class WhiteboardShapesTest {
     @Test
     fun closedTemplatesAreIndependentOfDragDirection() {
         listOf(WhiteboardShape.RECTANGLE, WhiteboardShape.ELLIPSE,
-            WhiteboardShape.PARALLELOGRAM, WhiteboardShape.TRAPEZOID, WhiteboardShape.HEXAGON).forEach { shape ->
+            WhiteboardShape.PARALLELOGRAM, WhiteboardShape.TRAPEZOID, WhiteboardShape.RHOMBUS,
+            WhiteboardShape.PENTAGON, WhiteboardShape.HEXAGON).forEach { shape ->
             val points = shape.points(point(100f, 200f), point(700f, 900f), 3f)
             assertEquals(points, shape.points(point(700f, 900f), point(100f, 200f), 3f))
             assertEquals(points.first(), points.last())
@@ -37,6 +38,43 @@ class WhiteboardShapesTest {
             assertEquals(700f, points.maxOf { it.x })
             assertEquals(200f, points.minOf { it.y })
             assertEquals(900f, points.maxOf { it.y })
+        }
+    }
+
+    @Test
+    fun rhombusKeepsFourEqualSidesWithPerpendicularDiagonals() {
+        listOf(point(700f, 900f), point(900f, 500f)).forEach { end ->
+            val points = WhiteboardShape.RHOMBUS.points(point(100f, 200f), end, 3f)
+            assertEquals(5, points.size)
+            assertEquals(4, points.distinct().size)
+            assertEquals(points.first(), points.last())
+            val lengths = points.zipWithNext().map { (a, b) ->
+                sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
+            }
+            lengths.forEach { assertEquals(lengths.first(), it, 0.01f) }
+            val (a, b, c, d) = points
+            assertEquals(a.x, c.x)
+            assertEquals(b.y, d.y)
+            assertEquals(a.x, (b.x + d.x) / 2f)
+            assertEquals(b.y, (a.y + c.y) / 2f)
+        }
+    }
+
+    @Test
+    fun pentagonHasFiveConvexSidesWithOneTopVertexAndAFlatBase() {
+        val points = WhiteboardShape.PENTAGON.points(point(100f, 200f), point(700f, 900f), 3f)
+        assertEquals(6, points.size)
+        assertEquals(5, points.distinct().size)
+        assertEquals(points.first(), points.last())
+        assertEquals(1, points.dropLast(1).count { it.y == 200f })
+        assertEquals(2, points.dropLast(1).count { it.y == 900f })
+        assertTrue(points.dropLast(1).all { p -> points.any { it.x == 800f - p.x && it.y == p.y } })
+        val vertices = points.dropLast(1)
+        vertices.indices.forEach { index ->
+            val a = vertices[index]
+            val b = vertices[(index + 1) % 5]
+            val c = vertices[(index + 2) % 5]
+            assertTrue((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) > 0f)
         }
     }
 

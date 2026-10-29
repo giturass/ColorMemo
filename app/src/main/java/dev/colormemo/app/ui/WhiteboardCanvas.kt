@@ -112,8 +112,9 @@ private val ViewportSaver = listSaver<WhiteboardViewport, Float>(
 )
 
 private val InstrumentSaver = listSaver<WhiteboardInstrumentState, Float>(
-    save = { listOf(it.centerX, it.centerY, it.radius, it.baselineDegrees, it.angleDegrees) },
-    restore = { WhiteboardInstrumentState(it[0], it[1], it[2], it[3], it[4]).constrained() },
+    save = { listOf(it.centerX, it.centerY, it.radius, it.baselineDegrees, it.angleDegrees, it.arcRadians) },
+    restore = { WhiteboardInstrumentState(it[0], it[1], it[2], it[3], it[4],
+        it.getOrElse(5) { FULL_TURN_RADIANS }).constrained() },
 )
 
 private val inkColors = listOf(
@@ -175,7 +176,7 @@ internal fun WhiteboardEditor(
     var protractorPlaced by rememberSaveable { mutableStateOf(false) }
     var rulerPlaced by rememberSaveable { mutableStateOf(false) }
     var showGuides by rememberSaveable { mutableStateOf(false) }
-    var showMagnifier by rememberSaveable { mutableStateOf(true) }
+    var showMagnifier by rememberSaveable { mutableStateOf(false) }
     var showTextEditor by rememberSaveable { mutableStateOf(false) }
     var editingTextId by rememberSaveable { mutableStateOf<String?>(null) }
     var textPositionX by rememberSaveable { mutableStateOf(500f) }
@@ -444,12 +445,13 @@ internal fun WhiteboardEditor(
             } else if (tool == WhiteboardTool.INSTRUMENT) {
                 WhiteboardInstrumentControls(instrument, instrumentState, controlsEnabled,
                     onChange = { instrumentState = it },
-                    onDraw = {
-                        val next = currentBoard.withInstrumentDrawing(instrument, instrumentState, ink, lineWidth, brush)
+                    onDraw = { state ->
+                        val next = currentBoard.withInstrumentDrawing(instrument, state, ink, lineWidth, brush)
                         limitReached = next == null
-                        if (next != null) {
+                        if (next != null && next != currentBoard) {
                             rememberUndo(currentBoard)
                             publish(next)
+                            if (instrument == WhiteboardInstrument.COMPASS) instrumentState = state.afterCompassDrawing()
                         }
                     }, onClose = { tool = WhiteboardTool.PEN })
             } else if (tool == WhiteboardTool.TEXT) {

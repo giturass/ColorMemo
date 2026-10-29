@@ -13,6 +13,10 @@ import kotlin.math.sin
 
 internal const val MIN_INSTRUMENT_RADIUS = 24f
 internal const val RULER_LENGTH_FACTOR = 1.8f
+internal val FULL_TURN_RADIANS = (2 * PI).toFloat()
+
+internal fun parseWhiteboardInstrumentValue(text: String, range: ClosedFloatingPointRange<Float>): Float? =
+    text.trim().replace(',', '.').toFloatOrNull()?.takeIf { it.isFinite() && it in range }
 
 internal enum class WhiteboardInstrument(val displayName: String) {
     COMPASS("圆规"), PROTRACTOR("量角器"), RULER("直尺"),
@@ -27,6 +31,7 @@ internal data class WhiteboardInstrumentState(
     val radius: Float = 180f,
     val baselineDegrees: Float = 0f,
     val angleDegrees: Float = 60f,
+    val arcRadians: Float = FULL_TURN_RADIANS,
 ) {
     val center: WhiteboardPoint get() = WhiteboardPoint(centerX, centerY)
     val maximumRadius: Float get() = minOf(centerX, Whiteboard.CANVAS_WIDTH - centerX,
@@ -34,12 +39,17 @@ internal data class WhiteboardInstrumentState(
     // All four ruler corners fit inside the shared guide radius at any rotation.
     val rulerLength: Float get() = radius * RULER_LENGTH_FACTOR
     val rulerHalfWidth: Float get() = radius * 0.3f
+    val arcDegrees: Float get() = arcRadians / FULL_TURN_RADIANS * 360f
+
+    fun afterCompassDrawing(): WhiteboardInstrumentState =
+        copy(baselineDegrees = normalizedDegrees(baselineDegrees + arcDegrees))
 
     fun constrained(): WhiteboardInstrumentState {
         val size = radius.coerceIn(MIN_INSTRUMENT_RADIUS, Whiteboard.CANVAS_WIDTH / 2f)
         return copy(centerX = centerX.coerceIn(size, Whiteboard.CANVAS_WIDTH - size),
             centerY = centerY.coerceIn(size, Whiteboard.CANVAS_HEIGHT - size), radius = size,
-            baselineDegrees = normalizedDegrees(baselineDegrees), angleDegrees = angleDegrees.coerceIn(0f, 180f))
+            baselineDegrees = normalizedDegrees(baselineDegrees), angleDegrees = angleDegrees.coerceIn(0f, 180f),
+            arcRadians = arcRadians.coerceIn(0f, FULL_TURN_RADIANS))
     }
 
     fun resized(radius: Float): WhiteboardInstrumentState = copy(radius = radius.coerceIn(MIN_INSTRUMENT_RADIUS, maximumRadius))
@@ -80,7 +90,8 @@ internal data class WhiteboardInstrumentState(
     }
 
     fun drawingPoints(instrument: WhiteboardInstrument): List<WhiteboardPoint> = when (instrument) {
-        WhiteboardInstrument.COMPASS -> arcPoints(0f, 360f, radius, 96)
+        WhiteboardInstrument.COMPASS -> if (arcRadians <= 0f) emptyList() else
+            arcPoints(baselineDegrees, arcDegrees, radius, ceil(arcDegrees / 3.75f).toInt().coerceAtLeast(1))
         WhiteboardInstrument.PROTRACTOR -> {
             val angleRadius = radius * 0.24f
             listOf(handlePoint(InstrumentHandle.MEASUREMENT), center, pointAt(baselineDegrees)) +
@@ -99,6 +110,7 @@ internal fun Whiteboard.withInstrumentDrawing(
     color: Long, width: Float, brush: WhiteboardBrush,
 ): Whiteboard? {
     val points = state.drawingPoints(instrument)
+    if (points.isEmpty()) return this
     if (strokes.size >= Whiteboard.MAX_STROKES || strokes.sumOf { it.points.size } + points.size > Whiteboard.MAX_POINTS) return null
     return copy(strokes = strokes + WhiteboardStroke(color, width, points, brush))
 }
