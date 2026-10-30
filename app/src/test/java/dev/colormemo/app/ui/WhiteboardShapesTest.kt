@@ -195,11 +195,58 @@ class WhiteboardShapesTest {
     }
 
     @Test
-    fun cubeHasThreeSquareFaceEdgesAndSphereKeepsRoundOutline() {
-        val cube = WhiteboardShape.CUBE.points(point(100f, 200f), point(700f, 1000f), 3f)
+    fun equalWidthAndHeightStillDrawsACube() {
+        val cube = WhiteboardShape.CUBE.points(point(100f, 200f), point(700f, 800f), 3f)
         val aligned = cube.zipWithNext().filter { (a, b) -> a.x == b.x || a.y == b.y }
         assertEquals(6, aligned.size)
         aligned.forEach { (a, b) -> assertEquals(432f, kotlin.math.abs(a.x - b.x) + kotlin.math.abs(a.y - b.y)) }
+    }
+
+    @Test
+    fun cubeStretchesToWideAndTallCuboidsInEveryDragDirection() {
+        val start = point(500f, 2000f)
+        for ((width, height) in listOf(400f to 80f, 80f to 1200f, 400f to 2f, 2f to 1600f)) {
+            for (horizontal in listOf(-1f, 1f)) for (vertical in listOf(-1f, 1f)) {
+                val end = point(start.x + width * horizontal, start.y + height * vertical)
+                val points = WhiteboardShape.CUBE.points(start, end, 3f)
+                assertEquals(points, WhiteboardShape.CUBE.points(end, start, 3f))
+                assertEquals(minOf(start.x, end.x), points.minOf { it.x })
+                assertEquals(maxOf(start.x, end.x), points.maxOf { it.x })
+                assertEquals(minOf(start.y, end.y), points.minOf { it.y })
+                assertEquals(maxOf(start.y, end.y), points.maxOf { it.y })
+                assertEquals(7, points.distinct().size)
+                assertEquals(9, points.zipWithNext().map { (a, b) -> setOf(a, b) }.toSet().size)
+                assertTrue(points.all { it.x.isFinite() && it.y.isFinite() })
+
+                val edges = points.zipWithNext()
+                val horizontalEdges = edges.filter { (a, b) -> a.y == b.y }
+                val verticalEdges = edges.filter { (a, b) -> a.x == b.x }
+                assertEquals(3, horizontalEdges.size)
+                assertEquals(3, verticalEdges.size)
+                val faceWidth = horizontalEdges.first().let { (a, b) -> kotlin.math.abs(a.x - b.x) }
+                val faceHeight = verticalEdges.first().let { (a, b) -> kotlin.math.abs(a.y - b.y) }
+                assertTrue(faceWidth > 0f && faceWidth < width)
+                assertTrue(faceHeight > 0f && faceHeight < height)
+                assertEquals(width - height, faceWidth - faceHeight, 0.001f)
+                horizontalEdges.forEach { (a, b) -> assertEquals(faceWidth, kotlin.math.abs(a.x - b.x), 0.001f) }
+                verticalEdges.forEach { (a, b) -> assertEquals(faceHeight, kotlin.math.abs(a.y - b.y), 0.001f) }
+
+                // All receding edges have the same offset and point up and to the right.
+                val depthEdges = edges.filter { (a, b) -> a.x != b.x && a.y != b.y }
+                assertEquals(4, depthEdges.size)
+                val depth = depthEdges.first().let { (a, b) -> kotlin.math.abs(a.x - b.x) }
+                assertTrue(depth > 0f && depth < minOf(width, height))
+                depthEdges.forEach { (a, b) ->
+                    assertEquals(depth, kotlin.math.abs(a.x - b.x), 0.001f)
+                    assertEquals(depth, kotlin.math.abs(a.y - b.y), 0.001f)
+                    assertTrue((a.x - b.x) * (a.y - b.y) < 0f)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun sphereKeepsRoundOutline() {
         val sphere = WhiteboardShape.SPHERE.points(point(100f, 200f), point(700f, 1000f), 3f)
         assertEquals(600f, sphere.maxOf { it.x } - sphere.minOf { it.x })
         assertEquals(600f, sphere.maxOf { it.y } - sphere.minOf { it.y })

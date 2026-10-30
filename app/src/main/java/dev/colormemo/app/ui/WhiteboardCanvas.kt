@@ -984,7 +984,7 @@ private fun WhiteboardShapeIcon(shape: WhiteboardShape) {
         val open = shape == WhiteboardShape.LINE || shape.isArrow
         val start = when {
             open -> WhiteboardPoint(140f, 780f)
-            shape in listOf(WhiteboardShape.CIRCLE, WhiteboardShape.SQUARE, WhiteboardShape.CUBE, WhiteboardShape.SPHERE) -> WhiteboardPoint(220f, 220f)
+            shape in listOf(WhiteboardShape.CIRCLE, WhiteboardShape.SQUARE, WhiteboardShape.SPHERE) -> WhiteboardPoint(220f, 220f)
             else -> WhiteboardPoint(140f, 220f)
         }
         val end = if (open) WhiteboardPoint(860f, 220f) else WhiteboardPoint(860f, 780f)

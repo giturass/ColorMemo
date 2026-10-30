@@ -70,7 +70,7 @@ internal fun WhiteboardShape.points(
     }
     if (dx == 0f || dy == 0f) return emptyList()
     // Equal-sided templates stay anchored at the initial touch in every drag direction.
-    val corner = if (this in listOf(WhiteboardShape.CIRCLE, WhiteboardShape.SQUARE, WhiteboardShape.CUBE, WhiteboardShape.SPHERE)) {
+    val corner = if (this in listOf(WhiteboardShape.CIRCLE, WhiteboardShape.SQUARE, WhiteboardShape.SPHERE)) {
         val side = minOf(abs(dx), abs(dy))
         WhiteboardPoint(from.x + if (dx > 0f) side else -side, from.y + if (dy > 0f) side else -side)
     } else to
@@ -83,7 +83,8 @@ internal fun WhiteboardShape.points(
     val width = right - left
     val height = bottom - top
     if (this == WhiteboardShape.CUBE) {
-        val depth = width * 0.28f
+        // Fit the perspective offset inside both dimensions, including thin cuboids.
+        val depth = minOf(width, height) * 0.28f
         val frontTopLeft = whiteboardPoint(left, top + depth)
         val frontTopRight = whiteboardPoint(right - depth, top + depth)
         val frontBottomRight = whiteboardPoint(right - depth, bottom)
