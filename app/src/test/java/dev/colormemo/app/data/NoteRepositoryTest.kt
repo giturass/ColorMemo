@@ -41,6 +41,50 @@ class NoteRepositoryTest {
     @get:Rule val temporary = TemporaryFolder()
 
     @Test
+    fun importsMergeNativeRevisionsAndKeepUnrelatedNotesAndLocalAiPermissions() = runBlocking {
+        val repository = repository()
+        val base = note("shared").copy(content = "原文")
+        val unrelated = note("unrelated")
+        repository.importNotes(listOf(base, unrelated))
+        repository.setAiVisible(unrelated.id, true)
+        val localEdit = base.copy(content = "本机修改").edited("local", newRevision = "local-edit")
+        val remoteEdit = base.copy(content = "导入修改").edited("other", newRevision = "remote-edit")
+        repository.merge(listOf(localEdit))
+
+        assertEquals(1, repository.importNotes(listOf(remoteEdit)))
+        val imported = repository.snapshot()
+        assertEquals(setOf("本机修改", "导入修改"), imported.filter { it.id != unrelated.id }.map { it.content }.toSet())
+        assertEquals(unrelated, imported.single { it.id == unrelated.id })
+        assertEquals(setOf(unrelated.id), repository.aiVisibleIds.first())
+        repository.importNotes(listOf(remoteEdit))
+        assertEquals(imported, repository.snapshot())
+    }
+
+    @Test
+    fun invalidImportsDoNotWriteTheirValidNotesFirst() = runBlocking {
+        val repository = repository()
+        val original = note("original")
+        repository.importNotes(listOf(original))
+        assertThrows(dev.colormemo.core.sync.SyncProtocolException::class.java) {
+            runBlocking { repository.importNotes(listOf(note("valid"), note("invalid").copy(title = "x".repeat(501)))) }
+        }
+        assertEquals(listOf(original), repository.snapshot())
+    }
+
+    @Test
+    fun textOnlyImportChecksTheCombinedLibrarySizeBeforeWriting() = runBlocking {
+        val repository = repository()
+        val originals = (1..90).map { note("original-" + it).copy(content = "x".repeat(100_000)) }
+        val incoming = (1..90).map { note("incoming-" + it).copy(content = "y".repeat(100_000)) }
+        repository.importNotes(originals)
+        SyncJson.encodeDocument(SyncDocument(notes = incoming))
+        assertThrows(dev.colormemo.core.sync.SyncProtocolException::class.java) {
+            runBlocking { repository.importNotes(incoming) }
+        }
+        assertEquals(originals.sortedBy(Note::id), repository.snapshot().sortedBy(Note::id))
+    }
+
+    @Test
     fun draftRecoveryPreservesFullBaselineAndAttachmentsWithoutWritingANote() = runBlocking {
         val database = MemoryNoteDatabase()
         val attachments = AttachmentStore(temporary.newFolder())

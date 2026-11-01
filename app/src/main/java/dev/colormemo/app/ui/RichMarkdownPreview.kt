@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.colormemo.app.data.decodeNoteImage
+import dev.colormemo.app.data.markdownPath
 import dev.colormemo.app.data.remoteImageDownloader
 import dev.colormemo.app.data.remoteImageUrl
 import dev.colormemo.core.model.NoteAttachment
@@ -54,12 +55,12 @@ internal fun RichMarkdownPreview(
     markdown: String,
     modifier: Modifier,
     attachments: List<NoteAttachment>,
-    onOpenImage: (NoteAttachment) -> Unit,
+    onOpenAttachment: (NoteAttachment) -> Unit,
     onToggleTask: ((MarkdownTaskMarker) -> Unit)?,
 ) {
     val document = remember(markdown, attachments) { RichMarkdownDocument(markdown, attachments) }
     val currentDocument = rememberUpdatedState(document)
-    val currentOnOpen = rememberUpdatedState(onOpenImage)
+    val currentOnOpen = rememberUpdatedState(onOpenAttachment)
     val currentOnToggle = rememberUpdatedState(onToggleTask)
     val parentScope = rememberCoroutineScope()
     val images = remember(attachments, parentScope) { MarkdownWebImages(parentScope) }
@@ -93,6 +94,12 @@ internal fun RichMarkdownPreview(
                     put("index", index)
                 }) }
             })
+            put("files", buildJsonArray {
+                document.files.forEachIndexed { index, file -> add(buildJsonObject {
+                    put("source", file.markdownPath)
+                    put("index", index)
+                }) }
+            })
         }.toString()
     }
     AndroidView(
@@ -101,7 +108,7 @@ internal fun RichMarkdownPreview(
             MarkdownWebView(context,
                 onHeight = { id, value -> if (id == currentDocument.value.id) height = value.coerceIn(24, 60_000) },
                 onTask = { doc, marker -> if (doc === currentDocument.value) currentOnToggle.value?.invoke(marker) },
-                onImage = { doc, image -> if (doc === currentDocument.value) currentOnOpen.value(image) },
+                onAttachment = { doc, attachment -> if (doc === currentDocument.value) currentOnOpen.value(attachment) },
             )
         },
         update = { view -> view.show(document, images, payload, onToggleTask != null) },
@@ -149,7 +156,7 @@ private class MarkdownWebView(
     context: Context,
     onHeight: (String, Int) -> Unit,
     private val onTask: (RichMarkdownDocument, MarkdownTaskMarker) -> Unit,
-    private val onImage: (RichMarkdownDocument, NoteAttachment) -> Unit,
+    private val onAttachment: (RichMarkdownDocument, NoteAttachment) -> Unit,
 ) : WebView(context) {
     @Volatile private var document: RichMarkdownDocument? = null
     @Volatile private var images: MarkdownWebImages? = null
@@ -172,7 +179,7 @@ private class MarkdownWebView(
             javaScriptCanOpenWindowsAutomatically = false
             textZoom = 100
         }
-        // The bridge can report size only. Task/image actions require a main-frame user gesture.
+        // The bridge can report size only. Task/attachment actions require a main-frame user gesture.
         addJavascriptInterface(MarkdownSizeBridge { id, height ->
             post { if (!released) onHeight(id, height) }
         }, "ColorMemoSize")
@@ -219,7 +226,11 @@ private class MarkdownWebView(
                         }
                         "/action/image" -> {
                             val index = uri.getQueryParameter("index")?.toIntOrNull() ?: return true
-                            doc.images.getOrNull(index)?.attachment?.let { onImage(doc, it) }
+                            doc.images.getOrNull(index)?.attachment?.let { onAttachment(doc, it) }
+                        }
+                        "/action/file" -> {
+                            val index = uri.getQueryParameter("index")?.toIntOrNull() ?: return true
+                            doc.files.getOrNull(index)?.let { onAttachment(doc, it) }
                         }
                     }
                 } else if (uri.scheme in setOf("https", "http", "mailto")) {

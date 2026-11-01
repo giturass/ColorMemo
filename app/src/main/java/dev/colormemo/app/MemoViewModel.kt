@@ -4,7 +4,9 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import dev.colormemo.app.data.BackupService
+import dev.colormemo.app.data.NoteTransferService
+import dev.colormemo.app.data.NoteImportException
+import dev.colormemo.app.data.NoteExportException
 import dev.colormemo.app.data.EditorSession
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.sync.SyncProtocolException
@@ -28,7 +30,7 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
     private val graph = (application as ColorMemoApplication).graph
     private val mutableState = MutableStateFlow(MemoUiState())
     val state = mutableState.asStateFlow()
-    private val backups = BackupService(application, graph.repository)
+    private val transfers = NoteTransferService(application, graph.repository)
 
     init {
         viewModelScope.launch {
@@ -235,34 +237,45 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
         it.copy(message = graph.startupMessage.value ?: message)
     }
 
-    fun exportBackup(uri: Uri) = fileOperation("备份已导出") { backups.exportJson(uri) }
-    fun exportMarkdown(uri: Uri) = fileOperation("Markdown ZIP 已导出") { backups.exportMarkdown(uri) }
+    fun exportNotes(uri: Uri) = noteTransfer("正在导出…", "导出失败，请检查存储空间或重新选择文件夹") {
+        transfers.exportNotes(uri)
+        "JSON 和 Markdown ZIP 已保存到所选文件夹"
+    }
 
-    fun importBackup(uri: Uri) {
-        viewModelScope.launch {
-            try {
-                graph.ready.await()
-                val conflicts = withContext(Dispatchers.IO) { backups.importJson(uri) }
-                graph.work.afterEdit(graph.settings.settings.value)
-                showMessage(if (conflicts > 0) "导入完成，已保留冲突副本" else "导入完成")
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                showMessage("导入失败，请选择有效的彩笺 JSON 备份；原有笔记未被替换")
-            }
+    fun importNotes(uri: Uri) = noteTransfer("正在导入…", "导入失败，请选择有效的彩笺 JSON 或 Markdown ZIP；原有笔记未被替换") {
+        val result = transfers.importNotes(uri)
+        val message = buildString {
+            append("导入完成，共 ").append(result.noteCount).append(" 条笔记")
+            if (result.conflicts > 0) append("，已保留冲突副本")
+            if (result.unresolvedLinks > 0) append("；").append(result.unresolvedLinks).append(" 个本地链接未找到文件，已保留原链接")
+        }
+        try {
+            graph.work.afterEdit(graph.settings.settings.value)
+            message
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            message + "；自动同步暂未安排"
         }
     }
 
-    private fun fileOperation(success: String, action: suspend () -> Unit) {
+    private fun noteTransfer(status: String, failure: String, action: suspend () -> String) {
+        if (state.value.noteTransferStatus != null) return
+        mutableState.update { it.copy(noteTransferStatus = status) }
         viewModelScope.launch {
             try {
                 graph.ready.await()
-                withContext(Dispatchers.IO) { action() }
-                showMessage(success)
+                showMessage(withContext(Dispatchers.IO) { action() })
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                showMessage("导出失败，请检查存储空间或重新选择位置")
+            } catch (error: Exception) {
+                showMessage(when (error) {
+                    is NoteImportException -> "导入失败：" + error.message
+                    is NoteExportException -> error.message ?: failure
+                    is SyncProtocolException -> "文件处理失败：" + error.message
+                    else -> failure
+                })
+            } finally {
+                mutableState.update { it.copy(noteTransferStatus = null) }
             }
         }
     }

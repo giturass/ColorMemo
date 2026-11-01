@@ -18,6 +18,7 @@ import dev.colormemo.core.model.NoteAttachment
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.MarkwonSpansFactory
+import io.noties.markwon.LinkResolverDef
 import io.noties.markwon.image.AsyncDrawable
 import io.noties.markwon.image.AsyncDrawableLoader
 import io.noties.markwon.image.AsyncDrawableScheduler
@@ -42,6 +43,7 @@ internal class MarkdownImagesPlugin(
     scope: CoroutineScope,
     private val onOpen: (NoteAttachment) -> Unit,
 ) : AbstractMarkwonPlugin() {
+    private val localAttachments = attachments.associateBy { it.markdownPath }
     private val images = attachments.filter { it.isImage }.associateBy { it.markdownPath }
     private val loader = object : AsyncDrawableLoader() {
         private val jobs = mutableMapOf<AsyncDrawable, Job>()
@@ -99,6 +101,11 @@ internal class MarkdownImagesPlugin(
 
     override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
         builder.asyncDrawableLoader(loader)
+        val externalLinks = LinkResolverDef()
+        builder.linkResolver { view, destination ->
+            val attachment = localAttachments[destination]
+            if (attachment != null) onOpen(attachment) else externalLinks.resolve(view, destination)
+        }
     }
 
     override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {

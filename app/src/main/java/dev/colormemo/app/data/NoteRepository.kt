@@ -157,6 +157,11 @@ class NoteRepository internal constructor(
         writeMutex.withLock { mergeInTransaction(incoming).also { onCommitted() } }
     }
 
+    /** Imports must fit alongside current notes, including text-only libraries near the size limit. */
+    suspend fun importNotes(incoming: List<Note>): Int = withContext(Dispatchers.IO) {
+        writeMutex.withLock { mergeInTransaction(incoming, validateDocumentSize = true).also { onCommitted() } }
+    }
+
     private suspend fun mutate(
         id: String,
         preserveUpdatedAt: Boolean = false,
@@ -175,13 +180,15 @@ class NoteRepository internal constructor(
         }
     }
 
-    private fun mergeInTransaction(incoming: List<Note>): Int {
+    private fun mergeInTransaction(incoming: List<Note>, validateDocumentSize: Boolean = false): Int {
         var conflicts = 0
         database.runInTransaction {
             val current = dao.getAll().map(::decode)
             val result = MergeEngine.merge(current, incoming)
             // Reject an unsyncable attachment addition before changing any rows.
-            if (result.notes.any { it.attachments.isNotEmpty() }) SyncJson.encode(SyncDocument(notes = result.notes))
+            if (validateDocumentSize || result.notes.any { it.attachments.isNotEmpty() }) {
+                SyncJson.encode(SyncDocument(notes = result.notes))
+            }
             val byId = current.associateBy(Note::id)
             val changed = result.notes.filter { byId[it.id] != it }
             if (changed.isNotEmpty()) dao.upsert(changed.map(::encode))

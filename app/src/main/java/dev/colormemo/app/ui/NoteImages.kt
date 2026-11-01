@@ -65,7 +65,7 @@ internal fun NoteImagesRow(
                     if (attachment.isImage) {
                         NoteImagePreview(attachment, Modifier.fillMaxWidth().height(112.dp))
                     } else {
-                        // Older notes can still contain documents; retain access and removal.
+                        // Imported and existing documents retain access and removal.
                         Box(Modifier.fillMaxWidth().height(112.dp), contentAlignment = Alignment.Center) {
                             Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, Modifier.size(32.dp))
                         }

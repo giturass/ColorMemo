@@ -139,12 +139,16 @@ internal fun NoteEditorScreen(
         (whiteboard?.images.orEmpty().map { it.attachmentId } + listOfNotNull(pendingWhiteboardImage?.attachmentId)).toSet()
     }
     val attachmentReferences = remember(content.text) { markdownAttachmentReferences(content.text) }
+    val imageReferences = remember(content.text) { markdownAttachmentReferences(content.text, imagesOnly = true) }
     // Keep removed images in the draft cache for text undo, but omit them from saves.
     val retainedAttachments = remember(attachments, inlineImageIds, attachmentReferences, whiteboardImageIds) {
         retainMarkdownAttachments(attachments, inlineImageIds, attachmentReferences, whiteboardImageIds)
     }
-    val legacyAttachments = remember(retainedAttachments, attachmentReferences, whiteboardImageIds) {
-        retainedAttachments.filter { it.markdownPath !in attachmentReferences && it.id !in whiteboardImageIds }
+    val listedAttachments = remember(retainedAttachments, imageReferences, whiteboardImageIds) {
+        retainedAttachments.filter {
+            (!it.isImage || it.mimeType.equals("image/svg+xml", ignoreCase = true) || it.markdownPath !in imageReferences) &&
+                it.id !in whiteboardImageIds
+        }
     }
     var imageInsertionStart by rememberSaveable { mutableStateOf(0) }
     var imageInsertionEnd by rememberSaveable { mutableStateOf(0) }
@@ -537,9 +541,9 @@ internal fun NoteEditorScreen(
                     if (!readOnly) IconButton(onClick = { reminderAt = null }, enabled = !saving) { Icon(Icons.Outlined.Close, "移除提醒", Modifier.size(18.dp)) }
                 }
             }
-            if (legacyAttachments.isNotEmpty()) {
+            if (listedAttachments.isNotEmpty()) {
                 NoteImagesRow(
-                    attachments = legacyAttachments,
+                    attachments = listedAttachments,
                     editable = !readOnly && !saving && !importingImage,
                     onOpen = { if (it.isImage) selectedImageId = it.id else openAttachment(it) },
                     onRemove = { image -> attachments = attachments.filterNot { it.id == image.id } },
@@ -565,7 +569,7 @@ internal fun NoteEditorScreen(
                 else MarkdownPreview(
                     content.text,
                     attachments = retainedAttachments,
-                    onOpenImage = { selectedImageId = it.id },
+                    onOpenAttachment = { if (it.isImage) selectedImageId = it.id else openAttachment(it) },
                     onToggleTask = if (!readOnly && !saving && !importingImage) {
                         { marker -> if (!saving && !importingImage) content = content.toggleMarkdownTask(marker) }
                     } else null,
@@ -668,7 +672,7 @@ internal fun NoteEditorScreen(
             title = title,
             content = content,
             attachments = retainedAttachments,
-            onOpenImage = { selectedImageId = it.id },
+            onOpenAttachment = { if (it.isImage) selectedImageId = it.id else openAttachment(it) },
             onTitleChange = { if (it.length <= MAX_TITLE_LENGTH) title = it },
             onContentChange = { if (it.text.length <= MAX_CONTENT_LENGTH) content = it },
             readOnly = readOnly,
@@ -786,7 +790,7 @@ private fun WhiteboardDetailsDialog(
     title: String,
     content: TextFieldValue,
     attachments: List<NoteAttachment>,
-    onOpenImage: (NoteAttachment) -> Unit,
+    onOpenAttachment: (NoteAttachment) -> Unit,
     onTitleChange: (String) -> Unit,
     onContentChange: (TextFieldValue) -> Unit,
     readOnly: Boolean,
@@ -813,7 +817,7 @@ private fun WhiteboardDetailsDialog(
                     else MarkdownPreview(
                         content.text,
                         attachments = attachments,
-                        onOpenImage = onOpenImage,
+                        onOpenAttachment = onOpenAttachment,
                         onToggleTask = if (!readOnly && enabled) {
                             { marker -> onContentChange(content.toggleMarkdownTask(marker)) }
                         } else null,

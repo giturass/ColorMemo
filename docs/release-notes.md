@@ -1,19 +1,21 @@
-# 彩笺 · ColorMemo 0.3.6
+# 彩笺 · ColorMemo 0.3.7
 
 支持 Android 8.0 及以上版本，可覆盖安装旧版本升级。
 
-- 白板「立方体」工具支持自由调整宽高，可绘制横向或纵向的长方体；等宽等高时仍可绘制立方体。
-- 修正扁长和细高图形的透视棱线，支持从任意方向拖动绘制。
+- 移除笔记卡片左划移入回收站的手势；可通过编辑页删除菜单或长按多选后的删除按钮操作。
+- 设置页改为「导出」「导入」。选择文件夹后，一次保存同一份笔记的 JSON 和 Markdown ZIP；新版 ZIP 可完整导回彩笺，保留可编辑白板、附件和笔记状态。
+- 导入支持彩笺 JSON、新旧 Markdown ZIP，以及其他应用导出的 Markdown ZIP。支持嵌套目录、中文文件名、常规和引用式附件链接、Obsidian 双链附件，迁移正文、图片和文件附件。
+- 导入前校验文件，再与本地笔记合并；原生文件重复导入不会重复创建笔记。缺失附件保留原链接并提示，通用 Markdown ZIP 再次导入会新建笔记。旧版白板 SVG 作为附件保留，其他应用的专有元数据和跨笔记跳转不作映射。
 
-使用说明见 [白板工具](https://github.com/giturass/ColorMemo/blob/v0.3.6/docs/whiteboard.md)。
+使用说明与迁移范围见 [导出与导入](https://github.com/giturass/ColorMemo/blob/v0.3.7/docs/import-export.md)。
 
-草稿仅保存在当前设备，不进入同步、导出备份或 MCP 接口；异常退出可恢复的范围以最后成功写入的草稿为准。详情见 [草稿恢复](https://github.com/giturass/ColorMemo/blob/v0.3.6/docs/editor-recovery.md)。
+草稿仅保存在当前设备，不进入同步、导出或 MCP 接口；异常退出可恢复的范围以最后成功写入的草稿为准。详情见 [草稿恢复](https://github.com/giturass/ColorMemo/blob/v0.3.7/docs/editor-recovery.md)。
 
-配置步骤和权限范围见 [MCP服务器](https://github.com/giturass/ColorMemo/blob/v0.3.6/docs/ai-mcp.md)。白板暂支持读取、修改标题与说明和管理，不支持通过 MCP 绘制或传输附件文件。
+配置步骤和权限范围见 [MCP服务器](https://github.com/giturass/ColorMemo/blob/v0.3.7/docs/ai-mcp.md)。白板暂支持读取、修改标题与说明和管理，不支持通过 MCP 绘制或传输附件文件。
 
 升级后，已有恢复密钥继续用于同步，设置页不再提供显示、复制、生成或更换入口。在新设备配置时，请使用首次配置时保存在应用外的密钥备份。
 
-下载 `ColorMemo-v0.3.6.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
+下载 `ColorMemo-v0.3.7.apk` 安装。APK 由 GitHub Actions 构建，使用与 MDTerm Release 相同的签名证书。应用包名为 `dev.colormemo.app`，可与 MDTerm 同时安装。
 
 签名证书 SHA-256：
 

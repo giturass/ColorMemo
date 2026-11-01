@@ -28,6 +28,7 @@ internal class RichMarkdownDocument(val source: String, attachments: List<NoteAt
     val id: String = UUID.randomUUID().toString()
     val tasks: List<RichMarkdownTask>
     val images: List<RichMarkdownImage>
+    val files: List<NoteAttachment>
 
     init {
         val starts = listOf(0) + Regex("\\r\\n|\\r|\\n").findAll(source).map { it.range.last + 1 }.toList()
@@ -56,6 +57,8 @@ internal class RichMarkdownDocument(val source: String, attachments: List<NoteAt
                 RichMarkdownImage(destination, attachment)
             } else null
         }
+        val references = markdownAttachmentReferences(source)
+        files = attachments.filter { it.markdownPath in references }.distinctBy { it.markdownPath }
     }
 
     fun imageUrl(index: Int): String = "$MARKDOWN_ORIGIN/note/$id/image/$index"

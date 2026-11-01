@@ -108,7 +108,7 @@ AES-256-GCM
 
 2026-10-19 纵向扩展：旧的 `1000×1000` 笔迹保留原始坐标，在其下方增加空白区域，不拉伸、重写或迁移旧笔迹。JSON 字段、内部文档版本和加密信封保持不变，仅扩展纵坐标合法范围；旧客户端的坐标校验会拒绝包含 `y > 1000` 的同步快照或备份，因此使用下方新区域后，所有同步设备须更新到支持此范围的版本。卡片预览和 SVG 导出均采用 `1000×2000` 比例。此次复核了 [kotlinx.serialization 严格字段处理](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html) 与 [SVG 2 viewBox](https://www.w3.org/TR/SVG2/coords.html#ViewBoxAttribute)；数值范围仍由 `SyncJson.validateWhiteboard()` 在收发两端校验。
 
-白板扩展仍使用内部文档的 `schemaVersion: 1`。写出 JSON 时使用 `@EncodeDefault(NEVER)` 省略默认的 `whiteboard: null`，因此文字笔记的内部格式保持不变。旧客户端采用严格未知字段校验，会拒绝含白板的 JSON 备份，避免重写时丢弃笔画；所有同步设备均须升级到支持加密的版本。JSON 备份保留可编辑笔画；Markdown ZIP 导出同目录 SVG 及相对图片引用，不包含完整同步修订信息。
+白板扩展仍使用内部文档的 `schemaVersion: 1`。写出 JSON 时使用 `@EncodeDefault(NEVER)` 省略默认的 `whiteboard: null`，因此文字笔记的内部格式保持不变。旧客户端采用严格未知字段校验，会拒绝含白板的 JSON 备份，避免重写时丢弃笔画；所有同步设备均须升级到支持加密的版本。JSON 导出保留可编辑笔画；Markdown ZIP 导出同目录 SVG 及相对图片引用。2026-11-01 起，ZIP 另含完整的 `colormemo.json`，导回彩笺时使用其中的原始白板、附件及修订信息；同步文档和加密信封格式不变。见 [导出与导入](import-export.md)。
 
 2026-10-20 白板图片图层扩展：`whiteboard.images` 为有序列表，每个元素包含 `id`、`attachmentId`、`x`、`y`、`width`、`height`。图片引用本笔记 `attachments` 中的图片附件，坐标与笔画共用 `1000×2000` 世界空间，先绘制所有图片，再绘制笔画；擦除笔画不删除图片。每块白板最多 20 个图层，图层编号必须唯一，坐标及尺寸须为有限数，尺寸为正且整个矩形在画布内，不允许悬空或非图片附件引用。原文件继续使用现有附件校验、大小上限、加密同步和 JSON 备份。空列表用 `@EncodeDefault(NEVER)` 省略，旧笔画文档格式不变；内部版本及加密信封不变，旧客户端会严格拒绝含 `images` 的快照，所有同步设备须先更新到支持图片图层的版本。
 

@@ -16,7 +16,6 @@ import dev.colormemo.app.reminder.ReminderPermissions
 import dev.colormemo.app.ui.ColorMemoApp
 import dev.colormemo.app.ui.MemoCallbacks
 import dev.colormemo.app.ui.theme.ColorMemoTheme
-import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     private val model: MemoViewModel by viewModels()
@@ -25,14 +24,11 @@ class MainActivity : ComponentActivity() {
         model.refreshPermissions()
         if (!it) model.showMessage("提醒需要通知权限，可随时在设置中开启")
     }
-    private val createBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri?.let(model::exportBackup)
+    private val exportDirectory = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let(model::exportNotes)
     }
-    private val createMarkdown = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        uri?.let(model::exportMarkdown)
-    }
-    private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let(model::importBackup)
+    private val openNotes = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(model::importNotes)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,9 +65,11 @@ class MainActivity : ComponentActivity() {
                         },
                         onMessageShown = model::consumeMessage,
                         onConsumeRequestedNote = model::consumeRequestedNote,
-                        onExportNotes = { createBackup.launch("ColorMemo-${LocalDate.now()}.json") },
-                        onImportNotes = { openBackup.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
-                        onExportMarkdown = { createMarkdown.launch("ColorMemo-Markdown-${LocalDate.now()}.zip") },
+                        onExportNotes = { exportDirectory.launch(null) },
+                        onImportNotes = { openNotes.launch(arrayOf(
+                            "application/json", "application/zip", "application/x-zip-compressed",
+                            "text/plain", "application/octet-stream",
+                        )) },
                     ),
                 )
             }

@@ -65,6 +65,16 @@
         }
     });
 
+    const linkOpen = md.renderer.rules.link_open || function (tokens, index, options, env, renderer) {
+        return renderer.renderToken(tokens, index, options);
+    };
+    md.renderer.rules.link_open = function (tokens, index, options, env, renderer) {
+        const token = tokens[index];
+        const file = (env.files || []).find(item => md.normalizeLink(item.source) === token.attrGet('href'));
+        if (file) token.attrSet('href', action('file', env, '&index=' + file.index));
+        return linkOpen(tokens, index, options, env, renderer);
+    };
+
     md.renderer.rules.image = function (tokens, index, options, env, renderer) {
         const token = tokens[index];
         const src = token.attrGet('src');

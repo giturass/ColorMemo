@@ -125,11 +125,11 @@ internal fun MarkdownPreview(
     markdown: String,
     modifier: Modifier = Modifier,
     attachments: List<NoteAttachment> = emptyList(),
-    onOpenImage: (NoteAttachment) -> Unit = {},
+    onOpenAttachment: (NoteAttachment) -> Unit = {},
     onToggleTask: ((MarkdownTaskMarker) -> Unit)? = null,
 ) {
     if (remember(markdown) { needsRichMarkdown(markdown) }) {
-        RichMarkdownPreview(markdown, modifier, attachments, onOpenImage, onToggleTask)
+        RichMarkdownPreview(markdown, modifier, attachments, onOpenAttachment, onToggleTask)
         return
     }
     val context = LocalContext.current
@@ -144,7 +144,7 @@ internal fun MarkdownPreview(
     DisposableEffect(imageScope) {
         onDispose { imageScope.cancel() }
     }
-    val currentOnOpen = rememberUpdatedState(onOpenImage)
+    val currentOnOpen = rememberUpdatedState(onOpenAttachment)
     val currentMarkdown = rememberUpdatedState(markdown)
     val currentOnToggle = rememberUpdatedState(onToggleTask)
     val tasksEnabled = onToggleTask != null

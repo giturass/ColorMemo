@@ -2,9 +2,13 @@ package dev.colormemo.app.data
 
 import dev.colormemo.core.model.Note
 import dev.colormemo.core.model.NoteAttachment
+import dev.colormemo.core.sync.SyncDocument
+import dev.colormemo.core.sync.SyncJson
 import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+
+internal const val MARKDOWN_ARCHIVE_DOCUMENT = "colormemo.json"
 
 /** Preserves inline image paths and includes portable whiteboards and legacy attachments. */
 internal fun writeMarkdownArchive(
@@ -12,9 +16,14 @@ internal fun writeMarkdownArchive(
     output: OutputStream,
     imageDataUrl: (NoteAttachment) -> String = ::whiteboardImageDataUrl,
 ) {
+    // The portable files remain readable elsewhere; the native document makes ZIP imports lossless.
+    val document = SyncJson.encodeDocument(SyncDocument(notes = notes))
     val visibleNotes = notes.filter { it.deletedAt == null && !it.isPurged }
         .sortedWith(compareBy({ it.createdAt }, { it.id }))
     ZipOutputStream(output).use { zip ->
+        zip.putNextEntry(ZipEntry(MARKDOWN_ARCHIVE_DOCUMENT))
+        zip.write(document)
+        zip.closeEntry()
         val writtenAttachments = mutableSetOf<String>()
         visibleNotes.forEachIndexed { index, note ->
             val title = note.title.ifBlank { if (note.whiteboard == null) "未命名笔记" else "未命名白板" }

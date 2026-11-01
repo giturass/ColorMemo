@@ -52,9 +52,6 @@ import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -79,23 +76,19 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -468,7 +461,6 @@ private fun NotesSearchField(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MemoCard(
     note: Note,
@@ -478,50 +470,8 @@ private fun MemoCard(
     onLongClick: () -> Unit,
     onTrash: () -> Unit,
 ) {
-    val canSwipe = !selecting && note.deletedAt == null
-    if (!canSwipe) {
-        MemoCardContent(note, selecting, isSelected, onClick, onLongClick, onTrash)
-        return
-    }
-    val latestOnTrash by rememberUpdatedState(onTrash)
-    val leftDirection = if (LocalLayoutDirection.current == LayoutDirection.Ltr) SwipeToDismissBoxValue.EndToStart else SwipeToDismissBoxValue.StartToEnd
-    val swipe = rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.45f })
-    LaunchedEffect(swipe, leftDirection) {
-        snapshotFlow { swipe.currentValue }.collect { value ->
-            if (value == leftDirection) {
-                // Clear the saved dismissal before removing the card. A reset animation
-                // must never run on an unmeasured card when entering the trash.
-                swipe.snapTo(SwipeToDismissBoxValue.Settled)
-                latestOnTrash()
-            }
-        }
-    }
-    SwipeToDismissBox(
-        state = swipe,
-        enableDismissFromStartToEnd = leftDirection == SwipeToDismissBoxValue.StartToEnd,
-        enableDismissFromEndToStart = leftDirection == SwipeToDismissBoxValue.EndToStart,
-        backgroundContent = {
-            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.errorContainer).padding(16.dp),
-                contentAlignment = Alignment.CenterEnd) {
-                Icon(Icons.Outlined.DeleteOutline, "移到回收站", tint = MaterialTheme.colorScheme.onErrorContainer)
-            }
-        },
-    ) {
-        MemoCardContent(note, selecting, isSelected, onClick, onLongClick, onTrash)
-    }
-}
-
-@Composable
-private fun MemoCardContent(
-    note: Note,
-    selecting: Boolean,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onTrash: () -> Unit,
-) {
     val summary = remember(note.content) { markdownSummary(note.content) }
-    val canSwipe = !selecting && note.deletedAt == null
+    val canTrash = !selecting && note.deletedAt == null
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = note.color.containerColor()),
@@ -531,7 +481,7 @@ private fun MemoCardContent(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "选择便签")
             .semantics {
                 selected = isSelected
-                if (canSwipe) customActions = listOf(CustomAccessibilityAction("移到回收站") { onTrash(); true })
+                if (canTrash) customActions = listOf(CustomAccessibilityAction("移到回收站") { onTrash(); true })
             },
     ) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)) {

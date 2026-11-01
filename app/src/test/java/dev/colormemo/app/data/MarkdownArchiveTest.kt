@@ -79,7 +79,7 @@ class MarkdownArchiveTest {
             Note(id = "board", title = "../草图 <一>", content = "说明", createdAt = 2, whiteboard = Whiteboard()),
             Note(id = "archive", title = "../草图 <一>", createdAt = 3, isArchived = true, whiteboard = Whiteboard()),
             Note(id = "deleted", deletedAt = 1, createdAt = 4, whiteboard = Whiteboard()),
-            Note(id = "purged", isPurged = true, createdAt = 5),
+            Note(id = "purged", isPurged = true, deletedAt = 5, createdAt = 5),
         )
         val output = ByteArrayOutputStream()
         writeMarkdownArchive(notes, output)
@@ -90,7 +90,7 @@ class MarkdownArchiveTest {
                 entries[entry.name] = zip.readBytes().toString(Charsets.UTF_8)
             }
         }
-        assertEquals(5, entries.size)
+        assertEquals(6, entries.size)
         assertEquals("# 文字\n\n原有正文\n", entries["notes/0001-文字.md"])
         assertFalse(entries.keys.any { it.contains("../") })
         assertFalse(entries.keys.any { it.endsWith("文字.svg") })
@@ -136,7 +136,7 @@ class MarkdownArchiveTest {
                 entries[entry.name] = zip.readBytes()
             }
         }
-        assertEquals(2, entries.size)
+        assertEquals(3, entries.size)
         assertFalse(entries.keys.any { it.contains("../") || it.startsWith("/") })
         val filePath = entries.keys.single { it.endsWith(".bin") }
         org.junit.Assert.assertArrayEquals(bytes, entries.getValue(filePath))
@@ -161,7 +161,7 @@ class MarkdownArchiveTest {
                 entries[entry.name] = zip.readBytes()
             }
         }
-        assertEquals(3, entries.size)
+        assertEquals(4, entries.size)
         val markdown = entries.getValue("notes/0001-图片笔记.md").toString(Charsets.UTF_8)
         assertTrue(markdown.contains("![照片\\[1\\].png](<0001-图片笔记-attachments/1-照片_1_.png>)"))
         assertTrue(markdown.contains("\n[说明.txt](<0001-图片笔记-attachments/2-说明.txt>)"))
@@ -176,7 +176,7 @@ class MarkdownArchiveTest {
         val content = "前文\n\n![说明](<${image.markdownPath}>)\n\n中间文字\n\n![再次引用][photo]\n\n后文\n\n[photo]: <${image.markdownPath}>\n"
         val entries = archiveEntries(listOf(Note(title = "图文", content = content, attachments = listOf(image))))
         assertEquals("# 图文\n\n$content", entries.getValue("notes/0001-图文.md").toString(Charsets.UTF_8))
-        assertEquals(2, entries.size)
+        assertEquals(3, entries.size)
         org.junit.Assert.assertArrayEquals(image.bytes(), entries.getValue("notes/${image.markdownPath}"))
     }
 
@@ -188,7 +188,7 @@ class MarkdownArchiveTest {
             Note(id = "note-$index", createdAt = index.toLong(), content = "![图片](<${image.markdownPath}>)", attachments = listOf(image))
         }
         val entries = archiveEntries(notes)
-        assertEquals(5, entries.size)
+        assertEquals(6, entries.size)
         org.junit.Assert.assertArrayEquals(first.bytes(), entries.getValue("notes/${first.markdownPath}"))
         org.junit.Assert.assertArrayEquals(second.bytes(), entries.getValue("notes/${second.markdownPath}"))
     }

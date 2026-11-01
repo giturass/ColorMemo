@@ -356,18 +356,22 @@ internal fun SyncSettingsScreen(state: MemoUiState, callbacks: MemoCallbacks, on
                 }
             }
 
-            if (callbacks.onExportNotes != null || callbacks.onImportNotes != null || callbacks.onExportMarkdown != null) {
+            if (callbacks.onExportNotes != null || callbacks.onImportNotes != null) {
                 SettingsCard {
-                    Text("备份与迁移", style = MaterialTheme.typography.titleMedium)
-                    Text("用 JSON 在彩笺间备份恢复；用 Markdown 文件迁移到其他工具。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("导出与导入", style = MaterialTheme.typography.titleMedium)
+                    Text("导出：选择文件夹，同时保存 JSON 和 Markdown ZIP。\n导入：选择彩笺 JSON 或 Markdown ZIP，也支持其他应用导出的 Markdown ZIP。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val canTransfer = !state.loading && state.noteTransferStatus == null
                     callbacks.onExportNotes?.let { action ->
-                        OutlinedButton(onClick = action, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FileDownload, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("导出 JSON 备份") }
+                        OutlinedButton(onClick = action, enabled = canTransfer, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FileDownload, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("导出") }
                     }
                     callbacks.onImportNotes?.let { action ->
-                        OutlinedButton(onClick = action, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FileUpload, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("导入 JSON 备份") }
+                        OutlinedButton(onClick = action, enabled = canTransfer, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FileUpload, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("导入") }
                     }
-                    callbacks.onExportMarkdown?.let { action ->
-                        OutlinedButton(onClick = action, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FileDownload, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("导出 Markdown ZIP") }
+                    state.noteTransferStatus?.let { status ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text(status, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }

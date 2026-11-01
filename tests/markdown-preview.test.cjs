@@ -86,6 +86,18 @@ test('images resolve only through the native manifest and retain open actions', 
     assert.match(linked, /href="https:\/\/example.com"/);
 });
 
+test('imported attachment links open only files in the native manifest', () => {
+    const files = [{ source: 'attachments/报告 一.pdf', index: 0 }];
+    const output = html('[报告](<attachments/报告 一.pdf>) [图片](attachments/unknown.png) [外链](https://example.com)', { files });
+    assert.match(output, /href="https:\/\/appassets.androidplatform.net\/action\/file\?id=revision&amp;index=0"/);
+    assert.match(output, /href="attachments\/unknown.png"/);
+    assert.match(output, /href="https:\/\/example.com"/);
+    const reference = html('[下载][file]\n\n[file]: <attachments/报告 一.pdf>', { files });
+    assert.match(reference, /action\/file\?id=revision&amp;index=0/);
+    const example = html('`[示例](<attachments/报告 一.pdf>)`', { files });
+    assert.doesNotMatch(example, /action\/file/);
+});
+
 test('table, link and Markdown formatting coexist with math', () => {
     const output = html('| 名称 | 数值 |\n| --- | --- |\n| **面积** | $r^2$ |\n\n[链接](https://example.com)');
     assert.match(output, /<table>/);

@@ -2,6 +2,12 @@
 
 以下官方文档在开发时实际查询，用于核对接口与约束。依赖版本在 Gradle 配置中固定；此处链接不代表依赖自动跟随最新版。
 
+2026-11-01 导出与导入复核：
+
+- [Android Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files) 与 [DocumentsContract](https://developer.android.com/reference/android/provider/DocumentsContract)：使用 `OpenDocumentTree` 选择一个文件夹，通过 `createDocument` 保存同一快照的 JSON 与 Markdown ZIP；使用 `OpenDocument` 选择导入文件，再按内容识别 JSON 或 ZIP。授权仅用于本次操作，不新增广泛存储权限。Android 11 以上的存储根目录及 Download 根目录限制由系统文件夹选择器处理。
+- [CommonMark 链接语法](https://spec.commonmark.org/0.31.2/#links) 与既有 0.16.1 解析器的 `BLOCKS_AND_INLINES` 源码位置：按已解析的图片和链接修改目标路径，保留原正文与代码。当前解析器丢失引用定义的源码位置，因此将真实的引用使用处转换为内联链接，保留标签与标题。通用 ZIP 兼容相对目录和 Obsidian 双链附件；原生 ZIP 新增 `colormemo.json` 以完整导回白板及修订，不改变同步协议。附件链接在原生和 WebView 预览中均只匹配本笔记已保存的附件。
+- 移除卡片的 `SwipeToDismissBox`、滑动状态和触发删除的 effect。回收站、编辑页删除菜单、长按多选及辅助功能删除操作继续沿用原有笔记修订逻辑。
+
 2026-10-30 白板笔尖偏移预览复核：
 
 - [Compose 手势处理](https://developer.android.com/develop/ui/compose/touch-input/pointer-input/understand-gestures)：继续在 `awaitEachGesture` 内处理同一次触摸序列并消费事件；仅单指触摸画笔或图形时，在屏幕坐标中将落笔位置上移，再转换为白板坐标。按下、移动、抬起及端点命中共用这一转换，双指仍用原始触点进行平移与缩放并回滚本次绘制。准星直接叠绘在编辑画布上，移除旧放大镜及其图层录制。
@@ -11,7 +17,7 @@
 - [Compose 图形修饰符与图层录制](https://developer.android.com/develop/ui/compose/graphics/draw/modifiers)：使用 `rememberGraphicsLayer`、`record` 与 `drawLayer` 复用画布绘制指令，再平移、放大并裁切到局部预览。工具手柄不进入放大图层，准星中心留空；只在编辑画布中绘制，不改变笔迹坐标、保存和导出。
 - 新建白板闪退复核：[Compose UI 1.8.0 源码](https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-android/1.8.0/ui-android-1.8.0-sources.jar) 的 `LayoutNodeDrawScope.record` 与 [UI Graphics 1.8.0 源码](https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-graphics-android/1.8.0/ui-graphics-android-1.8.0-sources.jar) 的 `CanvasDrawScope`：简写 `DrawScope.record` 重定向绘制上下文时将同一 scope 用作密度来源，`dp.toPx()` 触发密度 getter 循环，导致首帧 `StackOverflowError`。白板改用 `GraphicsLayer.record` 的显式重载，传入独立的 `Density(density, fontScale)` 快照、布局方向与像素尺寸，保留绘制指令复用。
 
-2026-10-22 回收站交互修复复核：
+2026-10-22 回收站交互修复复核（滑动删除已于 2026-11-01 移除）：
 
 - [Compose 滑动删除](https://developer.android.com/develop/ui/compose/touch-input/user-interactions/swipe-to-dismiss) 与 [Material3 1.3.2 官方源码](https://dl.google.com/dl/android/maven2/androidx/compose/material3/material3/1.3.2/material3-1.3.2-sources.jar)：滑动锚点依赖卡片布局；回收站及多选使用普通卡片，不创建滑动状态或启动复位动画。有效左滑完成后通过 `snapTo(Settled)` 清除保存的滑出状态，再移入回收站。
 - [Compose 状态与保存](https://developer.android.com/develop/ui/compose/state)：滑动状态会随惰性列表条目保存；使用以状态实例为键的 effect 观察变化，避免复位过程中因当前值变化取消同一次删除操作。恢复保留既有分类和排序时间，仍创建带祖先关系的新修订，不新增同步字段。
@@ -46,7 +52,7 @@
 
 WebDAV、S3/R2、SigV4 的参考链接见 [同步协议](sync-protocol.md)；闹钟及通知权限的参考链接见 [提醒说明](reminders.md)。
 
-2026-10-19 编辑交互扩展复核：
+2026-10-19 编辑交互扩展复核（滑动删除已于 2026-11-01 移除）：
 
 - [Compose 滑动删除](https://developer.android.com/develop/ui/compose/touch-input/user-interactions/swipe-to-dismiss)：使用 `SwipeToDismissBox` 单向滑动，将卡片移入可恢复的回收站，多选时停用滑动。
 - [Markwon HTML](https://noties.io/Markwon/docs/v4/html/) 与 [4.6.2 UnderlineHandler](https://github.com/noties/Markwon/blob/v4.6.2/markwon-html/src/main/java/io/noties/markwon/html/tag/UnderlineHandler.java)：仅注册下划线处理器，渲染 `<u>…</u>`；不启用图片加载。

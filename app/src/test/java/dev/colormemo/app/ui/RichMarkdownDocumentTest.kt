@@ -8,6 +8,18 @@ import org.junit.Test
 
 class RichMarkdownDocumentTest {
     @Test
+    fun attachmentLinksExposeOnlyReferencedFilesIncludingImagesUsedAsFileLinks() {
+        val pdf = NoteAttachment.create("报告 一.pdf", "application/pdf", byteArrayOf(1))
+        val image = NoteAttachment.create("照片.png", "image/png", byteArrayOf(2))
+        val unused = NoteAttachment.create("unused.txt", "text/plain", byteArrayOf(3))
+        val source = "[报告](<" + pdf.markdownPath + ">)\n\n[原图](<" + image.markdownPath + ">)\n\n" +
+            "\u0060[示例](<" + unused.markdownPath + ">)\u0060\n"
+        val document = RichMarkdownDocument(source, listOf(pdf, image, unused))
+        assertEquals(listOf(pdf, image), document.files)
+        assertTrue(document.images.isEmpty())
+    }
+
+    @Test
     fun recognizesSupportedEntrySyntaxIncludingNestedFences() {
         listOf("中文 ${'$'}x${'$'}", "\\(x\\)", "\\[x\\]", "```mermaid\ngraph TD", "~~~math\nx", ">   ```latex\nx", "  - ```MERMAID\ngraph TD")
             .forEach { assertTrue(it, needsRichMarkdown(it)) }
