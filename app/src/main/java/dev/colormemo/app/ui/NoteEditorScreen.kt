@@ -349,29 +349,17 @@ internal fun NoteEditorScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            when {
-                                readOnly -> if (whiteboard != null) "回收站白板" else "回收站便签"
-                                whiteboard != null -> title.ifBlank { if (note == null) "新白板" else "编辑白板" }
-                                note == null -> "新便签"
-                                else -> "编辑便签"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (!readOnly) Text(
-                            when {
-                                state.editor.error != null -> "草稿保存失败"
-                                state.editor.saving || draft.copy(attachments = attachments) != session.draft -> "正在保存草稿…"
-                                dirty -> "草稿已保存到本机"
-                                else -> "编辑时自动保存草稿"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (state.editor.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text(
+                        when {
+                            readOnly -> if (whiteboard != null) "回收站白板" else "回收站便签"
+                            whiteboard != null -> title.ifBlank { if (note == null) "新白板" else "编辑白板" }
+                            note == null -> "新便签"
+                            else -> "编辑便签"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 },
                 navigationIcon = { IconButton(onClick = close, enabled = !saving) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") } },
                 actions = {
@@ -506,7 +494,6 @@ internal fun NoteEditorScreen(
                 else Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp),
             ),
         ) {
-            if (state.editor.recovered) EditorNotice("已恢复上次未完成的编辑，可继续修改并保存。")
             state.editor.error?.let {
                 EditorNotice(it, isError = true)
                 TextButton(onClick = callbacks.onRetryDraft) { Text("重试保存草稿") }

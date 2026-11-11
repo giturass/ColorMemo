@@ -90,7 +90,7 @@ class MemoViewModel(application: Application) : AndroidViewModel(application) {
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { showMessage("笔记已保存到本机，自动同步暂未安排") }
                 }
-                showMessage(graph.startupMessage.value ?: "已保存到本机")
+                graph.startupMessage.value?.let(::showMessage)
             }
             saved
         } catch (cancelled: CancellationException) {
